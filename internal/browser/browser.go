@@ -23,6 +23,9 @@ func Open(link string) error {
 		return exec.Command("/usr/bin/open", link).Run()
 	case "linux":
 		return exec.Command("xdg-open", link).Run()
+	case "windows":
+		// Not cmd's start, which would read an & in the link as a second command.
+		return exec.Command("rundll32", "url.dll,FileProtocolHandler", link).Run()
 	default:
 		return fmt.Errorf("no browser opener on %s", runtime.GOOS)
 	}

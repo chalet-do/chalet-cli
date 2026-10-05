@@ -21,11 +21,10 @@ func mcpCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mcp",
 		Short: "Serve Chalet to Claude Desktop and Claude Code over stdio",
-		Long: "Run an MCP server on stdin/stdout. Its tools come from the app's catalog\n" +
-			"(/agent_catalog.json), so whatever Chalet opens to agents appears here.\n\n" +
+		Long: "Run an MCP server on stdin/stdout, for Claude Code and Claude Desktop.\n\n" +
 			"Read-only unless --writes. A trash or an archive only opens Chalet's\n" +
 			"confirm page in your browser: nothing happens until you click there.\n\n" +
-			"  claude mcp add --scope user chalet -- \"$(command -v chalet)\" mcp --writes --profile dev",
+			"  claude mcp add --scope user chalet -- chalet mcp --writes",
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			"agent_notes": "Long-running server; stdout speaks the MCP wire protocol. Not for interactive use.",

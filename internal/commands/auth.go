@@ -43,8 +43,8 @@ func loginCommand() *cobra.Command {
 		Use:   "login",
 		Short: "Sign in with a token made in Chalet's settings",
 		Long: "Paste a token from Settings › Access tokens in Chalet. It is read from\n" +
-			"standard input, never from an argument, and kept in the macOS keychain.\n\n" +
-			"  chalet auth login --profile dev --url http://localhost:3007",
+			"standard input, never from an argument, and kept in your system's keychain.\n\n" +
+			"  chalet auth login",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			name := profileFlag
@@ -88,9 +88,8 @@ func loginCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&baseURL, "url", "", "where Chalet runs, e.g. http://localhost:3007")
+	cmd.Flags().StringVar(&baseURL, "url", "https://chalet.do", "where Chalet runs")
 	cmd.Flags().IntVar(&account, "account", 0, "the account's number, as in /1/ in Chalet's URLs (needed when the token reaches several)")
-	_ = cmd.MarkFlagRequired("url")
 	return cmd
 }
 
