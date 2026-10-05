@@ -116,7 +116,7 @@ func (c *Catalog) GatewayDomains() ([]gateway.Domain, error) {
 		Key:   "destructive",
 		Tool:  "chalet_destructive",
 		Title: "Chalet: trash and archive",
-		Blurb: "Trash or archive anything in Chalet. Both can be undone, and each one first asks the owner in a dialog on their Mac: nothing happens until they click.",
+		Blurb: "Trash or archive anything in Chalet. Both can be undone. A call here only hands the owner Chalet's confirm page: nothing happens until they click there.",
 	}
 
 	for _, op := range c.Operations {

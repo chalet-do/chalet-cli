@@ -60,10 +60,10 @@ Keep `chalet_destructive` off every allow list.
 
 - **Read-only unless `--writes`.** The token's own permission is the hard
   switch; this one is the soft one.
-- **Trash, archive, and writes that clients will see ask you first**, in a
-  dialog on this Mac. Chalet decides which calls need it and words the
-  question; chalet shows it and sends the call again only after a click.
-  Cancel, Escape, the 60-second timeout or a missing screen all answer no.
+- **A token never trashes or archives.** Chalet answers such a call with its
+  question and a link to its confirm page; chalet opens the page in your
+  browser, and only your click there does it. The link lasts ten minutes and
+  works only for you. If no browser opens, the agent hands you the link.
 - **A token reaches only what you can reach**, and only the actions Chalet has
   declared for agents. Everything a token changes can be undone.
 - **No write is ever retried**, and no redirect is ever followed.

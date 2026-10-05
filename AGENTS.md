@@ -11,9 +11,10 @@ operation shares — transport, auth, confirmation, the catalog's format — nev
 for one operation. That is the proof the design works (api-spec §14.2 in the
 app repo), so keep it true.
 
-- The confirmation is the app's to ask: a 428 carries the question and the
-  button. Never decide here which call is dangerous, and never set the
-  `Chalet-Confirmed` header except after a click in `internal/dialog`.
+- The confirmation is the app's: a 428 carries its question and a link to its
+  confirm page, where the owner's click does the call. This side only opens
+  the link (`internal/browser`) and says so. Never decide here which call is
+  dangerous, and never send a 428'd call again.
 - Never retry a write. Never follow a redirect. Never print, log or pass the
   token as an argument.
 - stdout belongs to the MCP wire in `chalet mcp`; log to stderr.
