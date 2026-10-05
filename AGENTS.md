@@ -13,10 +13,9 @@ operation shares — transport, auth, confirmation, the catalog's format — nev
 for one operation. That is the proof the design works (api-spec §14.2 in the
 app repo), so keep it true.
 
-The tools follow 37signals' gateway convention
-([basecamp/mcp](https://github.com/basecamp/mcp)): one tool per area, called as
-`{"action": "...", "params": {...}}`, with a `describe` action for each
-action's parameters.
+The tools follow the gateway convention of the MCP library in `go.mod`: one
+tool per area, called as `{"action": "...", "params": {...}}`, with a
+`describe` action for each action's parameters.
 
 - The confirmation is the app's: a 428 carries its question and a link to its
   confirm page, where the owner's click does the call. This side only opens
@@ -25,8 +24,8 @@ action's parameters.
 - Never retry a write. Never follow a redirect. Never print, log or pass the
   token as an argument.
 - stdout belongs to the MCP wire in `chalet mcp`; log to stderr.
-- Pin `github.com/basecamp/cli` and `github.com/basecamp/mcp` to commits and
-  move them deliberately, with the tests as the gate.
+- The CLI and MCP libraries in `go.mod` are pinned to commits; move them
+  deliberately, with the tests as the gate.
 
 ## Development
 
@@ -61,5 +60,4 @@ reports `brews` as deprecated; the release runs regardless). Homebrew
 quarantines what a cask downloads, and macOS refuses a quarantined binary that
 Apple has not notarized; a formula's download is never quarantined. Notarizing
 needs the Apple Developer Program. With it, move to `homebrew_casks` and
-`notarize`, as basecamp/fizzy-cli does; the install command then becomes
-`brew install --cask`.
+`notarize`; the install command then becomes `brew install --cask`.
