@@ -7,15 +7,15 @@ up in Chalet for you and, if you allow it, change them.
 
 **macOS and Linux**, with [Homebrew](https://brew.sh):
 
-    brew install sschuez/tap/chalet
+    brew install chalet-do/tap/chalet
 
 **Windows**, with [Scoop](https://scoop.sh):
 
-    scoop bucket add sschuez https://github.com/sschuez/homebrew-tap
+    scoop bucket add chalet-do https://github.com/chalet-do/homebrew-tap
     scoop install chalet
 
 **Debian, Ubuntu, Fedora or RHEL**: download the `.deb` or `.rpm` for your
-system from the [latest release](https://github.com/sschuez/chalet-cli/releases/latest),
+system from the [latest release](https://github.com/chalet-do/chalet-cli/releases/latest),
 and install it:
 
     sudo apt install ./chalet_*.deb     # Debian, Ubuntu

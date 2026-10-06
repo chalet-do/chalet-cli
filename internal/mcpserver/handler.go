@@ -15,7 +15,7 @@ import (
 	"github.com/basecamp/mcp/gateway"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/sschuez/chalet-cli/internal/chalet"
+	"github.com/chalet-do/chalet-cli/internal/chalet"
 )
 
 // API is the slice of chalet.Client the handler drives.

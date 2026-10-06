@@ -15,7 +15,7 @@ import (
 	"github.com/basecamp/mcp/mcptest"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/sschuez/chalet-cli/internal/chalet"
+	"github.com/chalet-do/chalet-cli/internal/chalet"
 )
 
 // The catalog as the app served it at the end of Build A (testdata), so the

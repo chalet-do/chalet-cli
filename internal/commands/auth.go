@@ -12,8 +12,8 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/sschuez/chalet-cli/internal/chalet"
-	"github.com/sschuez/chalet-cli/internal/config"
+	"github.com/chalet-do/chalet-cli/internal/chalet"
+	"github.com/chalet-do/chalet-cli/internal/config"
 )
 
 func authCommand() *cobra.Command {
