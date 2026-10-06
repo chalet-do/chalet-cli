@@ -46,7 +46,7 @@ Push a version tag. `.github/workflows/release.yml` runs the tests on Linux,
 macOS and Windows (`test.yml`, which also runs on every pull request), then
 GoReleaser (`.goreleaser.yaml`): the archives and the `.deb` and `.rpm`
 packages go on the GitHub release, and the Homebrew formula and the Scoop
-manifest into `sschuez/homebrew-tap`. It writes there with a deploy key: the
+manifest into `chalet-do/homebrew-tap`. It writes there with a deploy key: the
 secret `TAP_DEPLOY_KEY` here, whose public half is the tap's one deploy key.
 
     git tag v0.1.0 && git push origin v0.1.0

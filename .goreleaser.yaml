@@ -1,6 +1,6 @@
 # Runs on a version tag (.github/workflows/release.yml): the archives and the
 # Linux packages go on the GitHub release, and the Homebrew formula and the
-# Scoop manifest into sschuez/homebrew-tap.
+# Scoop manifest into chalet-do/homebrew-tap.
 version: 2
 
 project_name: chalet
@@ -12,7 +12,7 @@ builds:
     goos: [darwin, linux, windows]
     goarch: [amd64, arm64]
     ldflags:
-      - -s -w -X github.com/sschuez/chalet-cli/internal/commands.Version={{ .Version }}
+      - -s -w -X github.com/chalet-do/chalet-cli/internal/commands.Version={{ .Version }}
 
 archives:
   - formats: [tar.gz]
@@ -22,7 +22,7 @@ archives:
 
 nfpms:
   - description: &description Connect Claude to your Chalet
-    homepage: &homepage https://github.com/sschuez/chalet-cli
+    homepage: &homepage https://github.com/chalet-do/chalet-cli
     maintainer: Chalet <hey@chalet.do>
     formats: [deb, rpm]
 
@@ -31,10 +31,10 @@ nfpms:
 # notarized. A formula's download is never quarantined.
 brews:
   - repository: &tap
-      owner: sschuez
+      owner: chalet-do
       name: homebrew-tap
       git:
-        url: git@github.com:sschuez/homebrew-tap.git
+        url: git@github.com:chalet-do/homebrew-tap.git
         private_key: "{{ .Env.TAP_DEPLOY_KEY }}"
     directory: Formula
     description: *description

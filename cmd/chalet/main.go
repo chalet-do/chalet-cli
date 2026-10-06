@@ -5,7 +5,7 @@ package main
 import (
 	"os"
 
-	"github.com/sschuez/chalet-cli/internal/commands"
+	"github.com/chalet-do/chalet-cli/internal/commands"
 )
 
 func main() {

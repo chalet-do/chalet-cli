@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sschuez/chalet-cli/internal/chalet"
-	"github.com/sschuez/chalet-cli/internal/config"
+	"github.com/chalet-do/chalet-cli/internal/chalet"
+	"github.com/chalet-do/chalet-cli/internal/config"
 )
 
 // Version is set at build time; `go install` leaves it at dev.

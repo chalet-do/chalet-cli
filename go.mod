@@ -1,4 +1,4 @@
-module github.com/sschuez/chalet-cli
+module github.com/chalet-do/chalet-cli
 
 go 1.26.7
 
