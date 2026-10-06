@@ -55,6 +55,16 @@ Try it without publishing anything:
 
     TAP_DEPLOY_KEY=unused goreleaser release --snapshot --clean
 
+The organization must allow deploy keys (its settings; the API field is
+`deploy_keys_enabled_for_repositories`). With them off, GoReleaser publishes
+the GitHub release, then fails to push the tap, as v0.1.1 did. Finish such a
+release with the next tag: a rerun builds new archives, so the formula's
+checksums would not match the files already on the release.
+
+mise needs nothing from this: its `github:` backend installs straight from the
+release and picks the archive by its name, so the `chalet_<version>_<os>_<arch>`
+names are part of the interface.
+
 Homebrew gets a formula, not the cask GoReleaser now prefers (`goreleaser check`
 reports `brews` as deprecated; the release runs regardless). Homebrew
 quarantines what a cask downloads, and macOS refuses a quarantined binary that
