@@ -9,6 +9,12 @@ up in Chalet for you and, if you allow it, change them.
 
     brew install chalet-do/tap/chalet
 
+**With [mise](https://mise.jdx.dev)**:
+
+    mise use -g github:chalet-do/chalet-cli
+
+By default, mise installs a release only once it is 24 hours old.
+
 **Windows**, with [Scoop](https://scoop.sh):
 
     scoop bucket add chalet-do https://github.com/chalet-do/homebrew-tap
@@ -67,7 +73,9 @@ to `claude_desktop_config.json` with its full path:
 ```
 
 `which chalet` prints the path on macOS, and `where.exe chalet` on Windows
-(write each `\` in it as `\\`). Then quit and reopen Claude Desktop.
+(write each `\` in it as `\\`). With mise, use its shim instead,
+`~/.local/share/mise/shims/chalet` with your home folder written out, so the
+path stays the same after an upgrade. Then quit and reopen Claude Desktop.
 
 ## What Claude can do
 
@@ -82,5 +90,8 @@ to `claude_desktop_config.json` with its full path:
 
     brew upgrade chalet         # Scoop: scoop update chalet
     brew uninstall chalet       # Scoop: scoop uninstall chalet
+
+    mise upgrade github:chalet-do/chalet-cli
+    mise unuse -g github:chalet-do/chalet-cli
 
 When you remove chalet, revoke its token in Chalet's settings as well.
