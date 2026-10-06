@@ -1,7 +1,7 @@
 package mcpserver
 
 import (
-	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -56,12 +56,8 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "POST /1/todos/todo-1/completion":
 		w.WriteHeader(http.StatusNoContent)
 	case "POST /1/recordings/todo-1/trash":
-		if r.Header.Get(ConfirmationHeader) == "true" {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
 		w.WriteHeader(http.StatusPreconditionRequired)
-		io.WriteString(w, `{"error":"Confirmation required","confirm":"Trash “Call Anna” in Website?","button":"Trash"}`)
+		io.WriteString(w, `{"error":"Confirmation required","confirm":"Trash “Call Anna” in Website?","confirm_url":"`+confirmURL+`"}`)
 	default:
 		w.WriteHeader(http.StatusNotFound)
 		io.WriteString(w, `{"error":"Not found"}`)
@@ -74,30 +70,32 @@ func (a *fakeApp) sent() []*http.Request {
 	return append([]*http.Request(nil), a.requests...)
 }
 
-type asked struct{ question, button string }
+const confirmURL = "https://chalet.test/1/agent_confirmation/new?token=abc"
 
-func serve(t *testing.T, cfg Config, answer bool) (*mcp.ClientSession, *fakeApp, *[]asked) {
+// serve connects a client to a server over the fake app. The browser is a
+// stand-in that writes down each link it is handed and answers browserErr.
+func serve(t *testing.T, cfg Config, browserErr error) (*mcp.ClientSession, *fakeApp, *[]string) {
 	t.Helper()
 	app := &fakeApp{}
 	httpServer := httptest.NewServer(app)
 	t.Cleanup(httpServer.Close)
 
-	var questions []asked
-	confirm := func(_ context.Context, question, button string) (bool, error) {
-		questions = append(questions, asked{question, button})
-		return answer, nil
+	var opened []string
+	open := func(link string) error {
+		opened = append(opened, link)
+		return browserErr
 	}
 
 	client := &chalet.Client{BaseURL: httpServer.URL, Account: "1", Token: "chalet_pat_test"}
-	server, err := New(recordedCatalog(t), client, confirm, cfg, "test", slog.New(slog.DiscardHandler))
+	server, err := New(recordedCatalog(t), client, open, cfg, "test", slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return mcptest.Connect(t, server.mcp), app, &questions
+	return mcptest.Connect(t, server.mcp), app, &opened
 }
 
 func TestReadOnlyUnlessWrites(t *testing.T) {
-	session, _, _ := serve(t, Config{}, false)
+	session, _, _ := serve(t, Config{}, nil)
 
 	tools := mcptest.ListTools(t, session)
 	if len(tools) != 1 || tools["chalet_my"] == nil {
@@ -106,7 +104,7 @@ func TestReadOnlyUnlessWrites(t *testing.T) {
 }
 
 func TestToolsSplitByEffectWithHonestAnnotations(t *testing.T) {
-	session, _, _ := serve(t, Config{Writes: true}, false)
+	session, _, _ := serve(t, Config{Writes: true}, nil)
 	tools := mcptest.ListTools(t, session)
 
 	if got := keys(tools); strings.Join(got, ",") != "chalet_destructive,chalet_my,chalet_todos_write" {
@@ -127,7 +125,7 @@ func TestToolsSplitByEffectWithHonestAnnotations(t *testing.T) {
 }
 
 func TestInstructionsCarryTheRules(t *testing.T) {
-	session, _, _ := serve(t, Config{}, false)
+	session, _, _ := serve(t, Config{}, nil)
 
 	if !strings.Contains(session.InitializeResult().Instructions, "Never guess one") {
 		t.Fatalf("instructions = %q", session.InitializeResult().Instructions)
@@ -135,7 +133,7 @@ func TestInstructionsCarryTheRules(t *testing.T) {
 }
 
 func TestReadAndWrite(t *testing.T) {
-	session, app, _ := serve(t, Config{Writes: true}, false)
+	session, app, _ := serve(t, Config{Writes: true}, nil)
 
 	text, isError := mcptest.CallText(t, session, "chalet_my", map[string]any{"action": "work"})
 	if isError || !strings.Contains(text, "Call Anna") {
@@ -153,37 +151,34 @@ func TestReadAndWrite(t *testing.T) {
 	}
 }
 
-func TestTrashWaitsForTheClick(t *testing.T) {
-	session, app, questions := serve(t, Config{Writes: true}, true)
+// A token never trashes: the app answers 428 with a link to its confirm page,
+// and this side opens it and says so, once, without sending again.
+func TestTrashHandsTheOwnerTheConfirmPage(t *testing.T) {
+	session, app, opened := serve(t, Config{Writes: true}, nil)
 
 	text, isError := mcptest.CallText(t, session, "chalet_destructive", map[string]any{"action": "trash", "params": map[string]any{"recording_id": "todo-1"}})
-	if isError || !strings.Contains(text, "204") {
+	if isError || !strings.Contains(text, "Not done yet: Trash “Call Anna” in Website?") || !strings.Contains(text, "open in the owner's browser: "+confirmURL) {
 		t.Fatalf("trash = %q (error %v)", text, isError)
 	}
-	if len(*questions) != 1 || (*questions)[0] != (asked{"Trash “Call Anna” in Website?", "Trash"}) {
-		t.Fatalf("asked %+v", *questions)
+	if len(*opened) != 1 || (*opened)[0] != confirmURL {
+		t.Fatalf("opened %v", *opened)
 	}
-
-	sent := app.sent()
-	if len(sent) != 2 || sent[0].Header.Get(ConfirmationHeader) != "" || sent[1].Header.Get(ConfirmationHeader) != "true" {
-		t.Fatalf("the request goes once unconfirmed, then once confirmed: %d requests", len(sent))
+	if len(app.sent()) != 1 {
+		t.Fatalf("the call goes once, sent %d", len(app.sent()))
 	}
 }
 
-func TestNoClickNoTrash(t *testing.T) {
-	session, app, _ := serve(t, Config{Writes: true}, false)
+func TestTheLinkSurvivesNoBrowser(t *testing.T) {
+	session, _, _ := serve(t, Config{Writes: true}, errors.New("no screen"))
 
 	text, isError := mcptest.CallText(t, session, "chalet_destructive", map[string]any{"action": "trash", "params": map[string]any{"recording_id": "todo-1"}})
-	if !isError || text != NotConfirmed {
+	if isError || !strings.Contains(text, "Give the owner the confirm page: "+confirmURL) {
 		t.Fatalf("trash = %q (error %v)", text, isError)
-	}
-	if len(app.sent()) != 1 {
-		t.Fatalf("a refusal sends nothing more, sent %d", len(app.sent()))
 	}
 }
 
 func TestMistakesAreInBand(t *testing.T) {
-	session, app, _ := serve(t, Config{Writes: true}, false)
+	session, app, _ := serve(t, Config{Writes: true}, nil)
 
 	text, isError := mcptest.CallText(t, session, "chalet_todos_write", map[string]any{"action": "complete", "params": map[string]any{}})
 	if !isError || !strings.Contains(text, `needs "todo_id"`) {
@@ -214,14 +209,14 @@ func TestNarrowingFailsClosed(t *testing.T) {
 
 	// A domain with only a destructive action serves that one tool, never
 	// everything (the gateway reads no names as "all").
-	session, _, _ := serve(t, Config{Writes: true, Domains: []string{"recordings"}}, false)
+	session, _, _ := serve(t, Config{Writes: true, Domains: []string{"recordings"}}, nil)
 	if got := keys(mcptest.ListTools(t, session)); strings.Join(got, ",") != "chalet_destructive" {
 		t.Fatalf("--domains recordings served %v", got)
 	}
 
 	// Narrowed to the to-dos, the destructive tool is gone with the
 	// recordings: nothing from an unnamed domain rides along.
-	session, _, _ = serve(t, Config{Writes: true, Domains: []string{"todos"}}, false)
+	session, _, _ = serve(t, Config{Writes: true, Domains: []string{"todos"}}, nil)
 	if got := keys(mcptest.ListTools(t, session)); strings.Join(got, ",") != "chalet_todos_write" {
 		t.Fatalf("--domains todos served %v", got)
 	}

@@ -23,21 +23,14 @@ type API interface {
 	Do(ctx context.Context, method, path string, query url.Values, body any, header http.Header) (*chalet.Response, error)
 }
 
-// Confirmer asks the owner a question and reports whether they said yes.
-type Confirmer func(ctx context.Context, question, button string) (bool, error)
-
-// ConfirmationHeader is what the app waits for before a call that needs the
-// owner's say-so. Only this handler sets it, and only after a click.
-const ConfirmationHeader = "Chalet-Confirmed"
-
-// NotConfirmed is the whole answer to a refused confirmation: the agent must
-// not take the refusal for a failure to retry.
-const NotConfirmed = "Not done: the owner did not confirm. Nothing changed."
+// Opener shows the owner a web page: the app's confirm page for a call that
+// waits for their click.
+type Opener func(link string) error
 
 type handler struct {
-	api     API
-	confirm Confirmer
-	logger  *slog.Logger
+	api    API
+	open   Opener
+	logger *slog.Logger
 }
 
 // handle turns one tool call into one request to the app. The calling
@@ -63,36 +56,33 @@ func (h handler) handle(ctx context.Context, dom gateway.Domain, op gateway.Oper
 		return gateway.ErrorResult("%v", err), nil
 	}
 
-	// The app asks before a trash, an archive, or a write clients will see:
-	// it knows what is about to happen, the owner's screen is here.
+	// A token never runs a trash or an archive: the app answers 428 with its
+	// question and a link to its confirm page, and the owner's click there does
+	// it. This side only opens the link and says so.
 	if resp.Status == http.StatusPreconditionRequired {
-		if !h.confirmed(ctx, resp) {
-			return gateway.ErrorResult(NotConfirmed), nil
-		}
-		resp, err = h.api.Do(ctx, operation.Method, path, query, body, http.Header{ConfirmationHeader: {"true"}})
-		if err != nil {
-			return gateway.ErrorResult("%v", err), nil
-		}
+		return h.handOver(resp), nil
 	}
 
 	return h.result(resp)
 }
 
-func (h handler) confirmed(ctx context.Context, resp *chalet.Response) bool {
+func (h handler) handOver(resp *chalet.Response) *mcp.CallToolResult {
 	var ask struct {
-		Confirm string `json:"confirm"`
-		Button  string `json:"button"`
+		Confirm    string `json:"confirm"`
+		ConfirmURL string `json:"confirm_url"`
 	}
-	if err := json.Unmarshal(resp.Body, &ask); err != nil || ask.Confirm == "" || ask.Button == "" {
-		h.logger.Warn("a confirmation without a question", "body", string(resp.Body))
-		return false
+	if err := json.Unmarshal(resp.Body, &ask); err != nil || ask.ConfirmURL == "" {
+		return gateway.ErrorResult("Chalet answered %s", resp.Error())
 	}
-	yes, err := h.confirm(ctx, ask.Confirm, ask.Button)
-	if err != nil {
-		h.logger.Warn("confirmation failed, so the answer is no", "error", err)
-		return false
+
+	where := "The confirm page is open in the owner's browser"
+	if err := h.open(ask.ConfirmURL); err != nil {
+		h.logger.Warn("could not open the browser", "error", err)
+		where = "Give the owner the confirm page"
 	}
-	return yes
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf(
+		"Not done yet: %s %s: %s — nothing changes until they click there. Do not call this again.",
+		ask.Confirm, where, ask.ConfirmURL)}}}
 }
 
 // A bodiless answer says its status, a list with more pages says where the

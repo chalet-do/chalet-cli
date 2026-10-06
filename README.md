@@ -1,77 +1,86 @@
 # chalet
 
-Chalet from the command line, and for Claude: `chalet mcp` serves Chalet to
-Claude Desktop and Claude Code as a local MCP server, signed in with a personal
-access token.
-
-chalet knows no Chalet feature. At start it reads the app's catalog
-(`/agent_catalog.json`) and builds its tools from it, so whatever Chalet opens
-to agents appears here without a new release of this repo. The tools follow
-37signals' gateway convention ([basecamp/mcp](https://github.com/basecamp/mcp)):
-one tool per area, called as `{"action": "...", "params": {...}}`, with a
-`describe` action for each action's parameters.
+Connect Claude to your [Chalet](https://chalet.do). Claude can then look things
+up in Chalet for you and, if you allow it, change them.
 
 ## Install
 
-    go install github.com/sschuez/chalet-cli/cmd/chalet@latest
+**macOS and Linux**, with [Homebrew](https://brew.sh):
 
-The binary lands in `$(go env GOPATH)/bin/chalet`.
+    brew install sschuez/tap/chalet
+
+**Windows**, with [Scoop](https://scoop.sh):
+
+    scoop bucket add sschuez https://github.com/sschuez/homebrew-tap
+    scoop install chalet
+
+**Debian, Ubuntu, Fedora or RHEL**: download the `.deb` or `.rpm` for your
+system from the [latest release](https://github.com/sschuez/chalet-cli/releases/latest),
+and install it:
+
+    sudo apt install ./chalet_*.deb     # Debian, Ubuntu
+    sudo dnf install ./chalet_*.rpm     # Fedora, RHEL
+
+**Without a package manager** (Linux, Windows): download the archive for your
+system from the same page, unpack it, and move `chalet` (`chalet.exe` on
+Windows) to a folder on your `PATH`.
+
+Check that it works:
+
+    chalet --version
 
 ## Sign in
 
-Make a token in Chalet: **Settings › Access tokens › Generate a token**. Start
-with *Read*; make a *Read and write* token when you want Claude to change
-things. Then:
+1. In Chalet, open **Settings › Access tokens** and generate a token. A *Read*
+   token lets Claude look; a *Read and write* token lets it change things too.
+2. Sign in, and paste the token when asked:
 
-    chalet auth login --profile dev --url http://localhost:3007
+       chalet auth login
 
-Paste the token when asked. It is read from standard input, never from an
-argument, and kept in the macOS keychain. `--account 1` picks the account when
-the token reaches more than one. `http://` is accepted for localhost only.
+The token is kept in your system's keychain. If it reaches more than one
+account, add `--account` with the account's number, as in `/1/` in your Chalet
+links.
 
-    chalet auth status
-    chalet auth logout     # then revoke the token in Chalet's settings too
+    chalet auth status    # who you are signed in as
+    chalet auth logout    # forget the token, then revoke it in Chalet too
 
-## Claude Desktop
+## Connect Claude Code
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`, with
-the absolute path (Desktop starts the command without a shell):
+    claude mcp add --scope user chalet -- chalet mcp --writes
+
+Leave out `--writes` to let Claude only read.
+
+## Connect Claude Desktop
+
+In Claude Desktop, open **Settings › Developer › Edit Config**, and add chalet
+to `claude_desktop_config.json` with its full path:
 
 ```json
 {
   "mcpServers": {
     "chalet": {
-      "command": "/Users/you/go/bin/chalet",
-      "args": ["mcp", "--writes", "--profile", "dev"]
+      "command": "/opt/homebrew/bin/chalet",
+      "args": ["mcp", "--writes"]
     }
   }
 }
 ```
 
-Quit and reopen Claude Desktop.
+`which chalet` prints the path on macOS, and `where.exe chalet` on Windows
+(write each `\` in it as `\\`). Then quit and reopen Claude Desktop.
 
-## Claude Code
+## What Claude can do
 
-    claude mcp add --scope user chalet -- "$(go env GOPATH)/bin/chalet" mcp --writes --profile dev
+- Claude reaches only what you can reach in Chalet.
+- Without `--writes`, Claude only reads. A *Read* token never writes, whatever
+  the flag says.
+- Claude never trashes or archives anything by itself. It opens Chalet's
+  confirm page in your browser, and nothing happens until you click there. The
+  link works for ten minutes, and only for you.
 
-Keep `chalet_destructive` off every allow list.
+## Update and remove
 
-## Safety
+    brew upgrade chalet         # Scoop: scoop update chalet
+    brew uninstall chalet       # Scoop: scoop uninstall chalet
 
-- **Read-only unless `--writes`.** The token's own permission is the hard
-  switch; this one is the soft one.
-- **Trash, archive, and writes that clients will see ask you first**, in a
-  dialog on this Mac. Chalet decides which calls need it and words the
-  question; chalet shows it and sends the call again only after a click.
-  Cancel, Escape, the 60-second timeout or a missing screen all answer no.
-- **A token reaches only what you can reach**, and only the actions Chalet has
-  declared for agents. Everything a token changes can be undone.
-- **No write is ever retried**, and no redirect is ever followed.
-
-## Development
-
-    go test ./...
-    go install ./cmd/chalet
-
-`internal/mcpserver/testdata/catalog.json` is the catalog as the app serves it;
-refresh it from a running app when the catalog's shape changes.
+When you remove chalet, revoke its token in Chalet's settings as well.

@@ -31,7 +31,7 @@ type Server struct {
 // New builds the tools from the catalog and hands them to the gateway. A
 // server with nothing to serve does not start: an empty tool list reads as
 // "Chalet has nothing" to a client, which is never what was meant.
-func New(cat *Catalog, api API, confirm Confirmer, cfg Config, version string, logger *slog.Logger) (*Server, error) {
+func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger *slog.Logger) (*Server, error) {
 	narrowed, err := cat.Narrow(cfg.Domains)
 	if err != nil {
 		return nil, err
@@ -43,7 +43,7 @@ func New(cat *Catalog, api API, confirm Confirmer, cfg Config, version string, l
 
 	gw, err := gateway.New(domains, gateway.Config{
 		ReadOnly: !cfg.Writes,
-		Handler:  handler{api: api, confirm: confirm, logger: logger}.handle,
+		Handler:  handler{api: api, open: open, logger: logger}.handle,
 	})
 	if err != nil {
 		return nil, err

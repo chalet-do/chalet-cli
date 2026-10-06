@@ -7,8 +7,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
+	"github.com/sschuez/chalet-cli/internal/browser"
 	"github.com/sschuez/chalet-cli/internal/config"
-	"github.com/sschuez/chalet-cli/internal/dialog"
 	"github.com/sschuez/chalet-cli/internal/mcpserver"
 )
 
@@ -21,11 +21,10 @@ func mcpCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mcp",
 		Short: "Serve Chalet to Claude Desktop and Claude Code over stdio",
-		Long: "Run an MCP server on stdin/stdout. Its tools come from the app's catalog\n" +
-			"(/agent_catalog.json), so whatever Chalet opens to agents appears here.\n\n" +
-			"Read-only unless --writes. Trash, archive and writes that clients will see\n" +
-			"first ask you in a dialog on this Mac.\n\n" +
-			"  claude mcp add --scope user chalet -- \"$(command -v chalet)\" mcp --writes --profile dev",
+		Long: "Run an MCP server on stdin/stdout, for Claude Code and Claude Desktop.\n\n" +
+			"Read-only unless --writes. A trash or an archive only opens Chalet's\n" +
+			"confirm page in your browser: nothing happens until you click there.\n\n" +
+			"  claude mcp add --scope user chalet -- chalet mcp --writes",
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			"agent_notes": "Long-running server; stdout speaks the MCP wire protocol. Not for interactive use.",
@@ -51,7 +50,7 @@ func mcpCommand() *cobra.Command {
 				return err
 			}
 
-			server, err := mcpserver.New(catalog, client, dialog.Confirm, cfg, Version, logger)
+			server, err := mcpserver.New(catalog, client, browser.Open, cfg, Version, logger)
 			if err != nil {
 				return err
 			}

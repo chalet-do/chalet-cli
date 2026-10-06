@@ -1,6 +1,6 @@
 // Package config keeps where chalet points and the token it signs in with:
 // named profiles in ~/.config/chalet/config.json (basecamp/cli/profile), and
-// the token in the macOS keychain (basecamp/cli/credstore), which falls back
+// the token in the system keychain (basecamp/cli/credstore), which falls back
 // to a 0600 file only when the keychain cannot be reached.
 package config
 
