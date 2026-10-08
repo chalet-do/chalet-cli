@@ -20,7 +20,7 @@ import (
 
 // API is the slice of chalet.Client the handler drives.
 type API interface {
-	Do(ctx context.Context, method, path string, query url.Values, body any, header http.Header) (*chalet.Response, error)
+	Do(ctx context.Context, method, path string, query url.Values, body map[string]any, header http.Header) (*chalet.Response, error)
 	Fetch(ctx context.Context, link string) (*chalet.Response, error)
 }
 

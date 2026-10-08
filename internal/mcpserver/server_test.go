@@ -162,6 +162,14 @@ func TestReadAndWrite(t *testing.T) {
 	if last.Header.Get("Accept") != "application/json" {
 		t.Errorf("Accept = %q", last.Header.Get("Accept"))
 	}
+
+	// Neither call has a field to send, so neither sends a body: a JSON null
+	// reaches the app as a key, and the app refuses keys it does not take.
+	for _, r := range app.sent() {
+		if r.ContentLength != 0 || r.Header.Get("Content-Type") != "" {
+			t.Errorf("%s %s sent a body of %d bytes as %q", r.Method, r.URL.Path, r.ContentLength, r.Header.Get("Content-Type"))
+		}
+	}
 }
 
 // A token never trashes: the app answers 428 with a link to its confirm page,
