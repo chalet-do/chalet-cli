@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -97,7 +98,45 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 		req.Header.Set("User-Agent", c.UserAgent)
 	}
 
-	resp, err := c.httpClient().Do(req)
+	return c.send(c.httpClient(), req)
+}
+
+// Fetch reads a file the app links to: a preview_url or a download_url from
+// its answers. The token goes to this Chalet and nowhere else — the app
+// answers with a redirect to the file in storage, which is followed without
+// it.
+func (c *Client) Fetch(ctx context.Context, link string) (*Response, error) {
+	base, err := url.Parse(c.BaseURL)
+	if err != nil {
+		return nil, err
+	}
+	target, err := base.Parse(link)
+	if err != nil || target.Scheme != base.Scheme || target.Host != base.Host {
+		return nil, fmt.Errorf("%q is not a link into Chalet at %s", link, c.BaseURL)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	if c.UserAgent != "" {
+		req.Header.Set("User-Agent", c.UserAgent)
+	}
+
+	client := *c.httpClient()
+	client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		next.Header.Del("Authorization")
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return c.send(&client, req)
+}
+
+func (c *Client) send(client *http.Client, req *http.Request) (*Response, error) {
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("could not reach Chalet at %s: %w", c.BaseURL, err)
 	}

@@ -1,6 +1,7 @@
 // Package mcpserver is `chalet mcp`: the 37signals gateway (basecamp/mcp)
 // serving the tools that the app's catalog describes, each call dispatched
-// as one request to the app's JSON API.
+// as one request to the app's JSON API — and chalet_picture beside them,
+// which hands over a picture that an answer links to.
 package mcpserver
 
 import (
@@ -41,9 +42,10 @@ func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger 
 		return nil, err
 	}
 
+	h := handler{api: api, open: open, logger: logger}
 	gw, err := gateway.New(domains, gateway.Config{
 		ReadOnly: !cfg.Writes,
-		Handler:  handler{api: api, open: open, logger: logger}.handle,
+		Handler:  h.handle,
 	})
 	if err != nil {
 		return nil, err
@@ -55,11 +57,14 @@ func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger 
 	server := gw.BuildMCPServer(&mcp.Implementation{Name: "chalet-cli", Title: "Chalet", Version: version}, logger)
 	server.AddReceivingMiddleware(instructions(cat.Rules))
 
+	// Whatever the domains: a picture can sit in the words of any of them.
+	addPictureTool(server, h)
+
 	var tools []string
 	for _, d := range gw.Domains() {
 		tools = append(tools, d.ToolName())
 	}
-	return &Server{mcp: server, Tools: tools}, nil
+	return &Server{mcp: server, Tools: append(tools, pictureTool)}, nil
 }
 
 // Run serves until the client goes away.
