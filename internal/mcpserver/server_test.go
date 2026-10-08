@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -35,14 +36,24 @@ func recordedCatalog(t *testing.T) *Catalog {
 
 // fakeApp answers like Chalet for account 1 and writes down what it was sent.
 type fakeApp struct {
+	url      string
 	mu       sync.Mutex
 	requests []*http.Request
 }
+
+// A WebP as http.DetectContentType knows one.
+const webp = "RIFF\x10\x00\x00\x00WEBPVP8 shot"
 
 func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	a.requests = append(a.requests, r)
 	a.mu.Unlock()
+
+	// Storage, where the app's file links redirect: it takes no token.
+	if r.URL.Path == "/storage/shot.webp" {
+		io.WriteString(w, webp)
+		return
+	}
 
 	if r.Header.Get("Authorization") != "Bearer chalet_pat_test" {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -55,6 +66,8 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, `{"up_next":[],"assignments":[{"id":"todo-1","type":"Todo","title":"Call Anna"}]}`)
 	case "POST /1/todos/todo-1/completion":
 		w.WriteHeader(http.StatusNoContent)
+	case "GET /1/rails/active_storage/representations/redirect/abc/shot.png":
+		http.Redirect(w, r, "/storage/shot.webp", http.StatusFound)
 	case "POST /1/recordings/todo-1/trash":
 		w.WriteHeader(http.StatusPreconditionRequired)
 		io.WriteString(w, `{"error":"Confirmation required","confirm":"Trash “Call Anna” in Website?","confirm_url":"`+confirmURL+`"}`)
@@ -79,6 +92,7 @@ func serve(t *testing.T, cfg Config, browserErr error) (*mcp.ClientSession, *fak
 	app := &fakeApp{}
 	httpServer := httptest.NewServer(app)
 	t.Cleanup(httpServer.Close)
+	app.url = httpServer.URL
 
 	var opened []string
 	open := func(link string) error {
@@ -97,9 +111,8 @@ func serve(t *testing.T, cfg Config, browserErr error) (*mcp.ClientSession, *fak
 func TestReadOnlyUnlessWrites(t *testing.T) {
 	session, _, _ := serve(t, Config{}, nil)
 
-	tools := mcptest.ListTools(t, session)
-	if len(tools) != 1 || tools["chalet_my"] == nil {
-		t.Fatalf("read-only serves only the read tools, got %v", keys(tools))
+	if got := keys(mcptest.ListTools(t, session)); strings.Join(got, ",") != "chalet_my,chalet_picture" {
+		t.Fatalf("read-only serves only the read tools, got %v", got)
 	}
 }
 
@@ -107,7 +120,7 @@ func TestToolsSplitByEffectWithHonestAnnotations(t *testing.T) {
 	session, _, _ := serve(t, Config{Writes: true}, nil)
 	tools := mcptest.ListTools(t, session)
 
-	if got := keys(tools); strings.Join(got, ",") != "chalet_destructive,chalet_my,chalet_todos_write" {
+	if got := keys(tools); strings.Join(got, ",") != "chalet_destructive,chalet_my,chalet_picture,chalet_todos_write" {
 		t.Fatalf("tools = %v", got)
 	}
 	if !tools["chalet_my"].Annotations.ReadOnlyHint {
@@ -177,6 +190,30 @@ func TestTheLinkSurvivesNoBrowser(t *testing.T) {
 	}
 }
 
+// A picture comes back as an image, and the token goes to Chalet alone: not
+// down the redirect to storage, and never to a link on another host.
+func TestAPictureIsAnImageAndTheTokenStaysWithChalet(t *testing.T) {
+	session, app, _ := serve(t, Config{}, nil)
+
+	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "chalet_picture",
+		Arguments: map[string]any{"url": app.url + "/1/rails/active_storage/representations/redirect/abc/shot.png"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if image, ok := res.Content[0].(*mcp.ImageContent); res.IsError || !ok || image.MIMEType != "image/webp" || string(image.Data) != webp {
+		t.Fatalf("picture = %#v (error %v)", res.Content[0], res.IsError)
+	}
+	sent := app.sent()
+	if storage := sent[len(sent)-1]; storage.URL.Path != "/storage/shot.webp" || storage.Header.Get("Authorization") != "" {
+		t.Fatalf("storage was sent %s with Authorization %q", storage.URL.Path, storage.Header.Get("Authorization"))
+	}
+
+	text, isError := mcptest.CallText(t, session, "chalet_picture", map[string]any{"url": "https://elsewhere.example/shot.png"})
+	if !isError || !strings.Contains(text, "not a link into Chalet") {
+		t.Fatalf("elsewhere = %q (error %v)", text, isError)
+	}
+}
+
 func TestMistakesAreInBand(t *testing.T) {
 	session, app, _ := serve(t, Config{Writes: true}, nil)
 
@@ -210,14 +247,14 @@ func TestNarrowingFailsClosed(t *testing.T) {
 	// A domain with only a destructive action serves that one tool, never
 	// everything (the gateway reads no names as "all").
 	session, _, _ := serve(t, Config{Writes: true, Domains: []string{"recordings"}}, nil)
-	if got := keys(mcptest.ListTools(t, session)); strings.Join(got, ",") != "chalet_destructive" {
+	if got := keys(mcptest.ListTools(t, session)); strings.Join(got, ",") != "chalet_destructive,chalet_picture" {
 		t.Fatalf("--domains recordings served %v", got)
 	}
 
 	// Narrowed to the to-dos, the destructive tool is gone with the
 	// recordings: nothing from an unnamed domain rides along.
 	session, _, _ = serve(t, Config{Writes: true, Domains: []string{"todos"}}, nil)
-	if got := keys(mcptest.ListTools(t, session)); strings.Join(got, ",") != "chalet_todos_write" {
+	if got := keys(mcptest.ListTools(t, session)); strings.Join(got, ",") != "chalet_picture,chalet_todos_write" {
 		t.Fatalf("--domains todos served %v", got)
 	}
 

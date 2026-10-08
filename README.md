@@ -82,6 +82,9 @@ path stays the same after an upgrade. Then quit and reopen Claude Desktop.
 - Claude reaches only what you can reach in Chalet.
 - Without `--writes`, Claude only reads. A *Read* token never writes, whatever
   the flag says.
+- Claude sees the pictures in Chalet — a screenshot in a card, a to-do, a
+  comment or a chat line — as smaller copies that Chalet makes for it. Your
+  token goes only to your Chalet, never to where the files are stored.
 - Claude never trashes or archives anything by itself. It opens Chalet's
   confirm page in your browser, and nothing happens until you click there. The
   link works for ten minutes, and only for you.

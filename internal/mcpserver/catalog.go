@@ -16,8 +16,9 @@ import (
 const SupportedMajor = "1"
 
 // Catalog is /agent_catalog.json: everything chalet-cli knows about Chalet.
-// Every tool, every summary and every path comes from here, which is why a
-// feature the app declares reaches Claude with no chalet-cli release.
+// Every tool but chalet_picture, every summary and every path comes from
+// here, which is why a feature the app declares reaches Claude with no
+// chalet-cli release.
 type Catalog struct {
 	Version    string      `json:"version"`
 	Rules      string      `json:"rules"`
