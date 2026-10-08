@@ -72,7 +72,11 @@ func CheckBaseURL(raw string) error {
 
 // Do sends one request and never sends it again: a write retried after an
 // unclear failure can happen twice (api-spec §14.3).
-func (c *Client) Do(ctx context.Context, method, path string, query url.Values, body any, header http.Header) (*Response, error) {
+//
+// The body is a map, never an `any`: a nil map inside an `any` is not nil,
+// and went out as a JSON null on every call without fields — a key the app
+// refuses, so every read failed.
+func (c *Client) Do(ctx context.Context, method, path string, query url.Values, body map[string]any, header http.Header) (*Response, error) {
 	var payload io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
