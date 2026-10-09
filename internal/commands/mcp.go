@@ -17,19 +17,23 @@ var mcpTransport = func() mcp.Transport { return &mcp.StdioTransport{} }
 
 func mcpCommand() *cobra.Command {
 	var cfg mcpserver.Config
+	var readOnly bool
 
 	cmd := &cobra.Command{
 		Use:   "mcp",
 		Short: "Serve Chalet to Claude Desktop and Claude Code over stdio",
 		Long: "Run an MCP server on stdin/stdout, for Claude Code and Claude Desktop.\n\n" +
-			"Read-only unless --writes. A trash or an archive only opens Chalet's\n" +
-			"confirm page in your browser: nothing happens until you click there.\n\n" +
-			"  claude mcp add --scope user chalet -- chalet mcp --writes",
+			"It reads and writes; --read-only serves the reading tools alone. A trash\n" +
+			"or an archive only opens Chalet's confirm page in your browser: nothing\n" +
+			"happens until you click there.\n\n" +
+			"  claude mcp add --scope user chalet -- chalet mcp",
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			"agent_notes": "Long-running server; stdout speaks the MCP wire protocol. Not for interactive use.",
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			cfg.Writes = !readOnly
+
 			// Logs go to stderr: stdout belongs to the MCP wire.
 			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil))
 
@@ -61,7 +65,11 @@ func mcpCommand() *cobra.Command {
 			return server.Run(cmd.Context(), mcpTransport())
 		},
 	}
-	cmd.Flags().BoolVar(&cfg.Writes, "writes", false, "serve the tools that change things as well")
+	cmd.Flags().BoolVar(&readOnly, "read-only", false, "serve only the tools that read")
+	// The opt-in from when the server only read by default. Accepted and
+	// ignored, so a config that still passes it keeps starting.
+	cmd.Flags().Bool("writes", true, "")
+	_ = cmd.Flags().MarkHidden("writes")
 	cmd.Flags().StringSliceVar(&cfg.Domains, "domains", nil, "serve only these domains (comma-separated, e.g. my,todos)")
 	return cmd
 }

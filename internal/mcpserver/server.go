@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/basecamp/mcp/gateway"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -16,8 +15,8 @@ import (
 
 // Config selects what the server serves.
 type Config struct {
-	// Writes serves the write and destructive tools as well. Without it the
-	// server only reads; the token's permission is the hard switch.
+	// Writes serves the write and destructive tools as well; `chalet mcp`
+	// sets it unless --read-only. The token's permission is the hard switch.
 	Writes bool
 	// Domains narrows to these domains, empty for all. An unknown name stops
 	// the server rather than serving less than asked for.
@@ -38,11 +37,6 @@ func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger 
 	if err != nil {
 		return nil, err
 	}
-	if !cfg.Writes {
-		readOnly := *narrowed
-		readOnly.Rules = strings.TrimSpace(readOnly.Rules + "\n" + readOnlyRule)
-		narrowed = &readOnly
-	}
 	domains, err := narrowed.GatewayDomains()
 	if err != nil {
 		return nil, err
@@ -57,7 +51,7 @@ func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger 
 		return nil, err
 	}
 	if len(gw.Domains()) == 0 {
-		return nil, fmt.Errorf("nothing to serve: the chosen domains have no read actions (add --writes to serve their writes)")
+		return nil, fmt.Errorf("nothing to serve: the chosen domains have no read actions (drop --read-only to serve their writes)")
 	}
 
 	server := gw.BuildMCPServer(&mcp.Implementation{Name: "chalet-cli", Title: "Chalet", Version: version}, logger)
@@ -72,11 +66,6 @@ func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger 
 	}
 	return &Server{mcp: server, Tools: append(tools, pictureTool)}, nil
 }
-
-// Without --writes the change tools are simply absent, and an agent that
-// cannot see them tells the owner Chalet cannot do the thing. So the rules
-// say they exist and how the owner turns them on.
-const readOnlyRule = "- This server only reads. Chalet also moves, edits and comments — every chalet_*_write tool and chalet_destructive — once the owner starts it as `chalet mcp --writes` (the args of the chalet server in their MCP config). When a task needs a change, tell them that; never say Chalet cannot do it."
 
 // Run serves until the client goes away.
 func (s *Server) Run(ctx context.Context, transport mcp.Transport) error {
