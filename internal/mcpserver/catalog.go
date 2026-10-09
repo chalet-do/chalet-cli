@@ -168,7 +168,7 @@ func (op Operation) gatewayOperation() *catalog.Operation {
 		Tag:         op.Domain,
 		Method:      op.Method,
 		Path:        op.Path,
-		Summary:     op.Summary,
+		Summary:     op.summary(),
 		ReadOnly:    op.Effect == "read",
 		Idempotent:  op.Idempotent,
 		Destructive: op.Effect == "destructive",
@@ -176,6 +176,21 @@ func (op Operation) gatewayOperation() *catalog.Operation {
 		Params:      op.Params,
 		Body:        op.Body,
 	}
+}
+
+// The app's words, then what a call cannot do without, so the first call to
+// an action needs no describe: "A message in full (needs project_id, id)".
+func (op Operation) summary() string {
+	var required []string
+	for _, param := range op.Params {
+		if param.Required {
+			required = append(required, param.Name)
+		}
+	}
+	if len(required) == 0 {
+		return op.Summary
+	}
+	return op.Summary + " (needs " + strings.Join(required, ", ") + ")"
 }
 
 func (c *Catalog) domain(set map[string]*catalog.Domain, key, suffix string) *catalog.Domain {
