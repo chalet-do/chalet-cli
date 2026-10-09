@@ -52,9 +52,9 @@ links.
 
 ## Connect Claude Code
 
-    claude mcp add --scope user chalet -- chalet mcp --writes
+    claude mcp add --scope user chalet -- chalet mcp
 
-Leave out `--writes` to let Claude only read.
+Add `--read-only` to let Claude only read.
 
 ## Connect Claude Desktop
 
@@ -66,7 +66,7 @@ to `claude_desktop_config.json` with its full path:
   "mcpServers": {
     "chalet": {
       "command": "/opt/homebrew/bin/chalet",
-      "args": ["mcp", "--writes"]
+      "args": ["mcp"]
     }
   }
 }
@@ -80,8 +80,8 @@ path stays the same after an upgrade. Then quit and reopen Claude Desktop.
 ## What Claude can do
 
 - Claude reaches only what you can reach in Chalet.
-- Without `--writes`, Claude only reads. A *Read* token never writes, whatever
-  the flag says.
+- With `--read-only`, Claude only reads. A *Read* token never writes,
+  whatever the flag says.
 - Claude sees the pictures in Chalet — a screenshot in a card, a to-do, a
   comment or a chat line — as smaller copies that Chalet makes for it. Your
   token goes only to your Chalet, never to where the files are stored.

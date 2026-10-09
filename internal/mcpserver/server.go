@@ -15,8 +15,8 @@ import (
 
 // Config selects what the server serves.
 type Config struct {
-	// Writes serves the write and destructive tools as well. Without it the
-	// server only reads; the token's permission is the hard switch.
+	// Writes serves the write and destructive tools as well; `chalet mcp`
+	// sets it unless --read-only. The token's permission is the hard switch.
 	Writes bool
 	// Domains narrows to these domains, empty for all. An unknown name stops
 	// the server rather than serving less than asked for.
@@ -51,11 +51,11 @@ func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger 
 		return nil, err
 	}
 	if len(gw.Domains()) == 0 {
-		return nil, fmt.Errorf("nothing to serve: the chosen domains have no read actions (add --writes to serve their writes)")
+		return nil, fmt.Errorf("nothing to serve: the chosen domains have no read actions (drop --read-only to serve their writes)")
 	}
 
 	server := gw.BuildMCPServer(&mcp.Implementation{Name: "chalet-cli", Title: "Chalet", Version: version}, logger)
-	server.AddReceivingMiddleware(instructions(cat.Rules))
+	server.AddReceivingMiddleware(instructions(narrowed.Rules))
 
 	// Whatever the domains: a picture can sit in the words of any of them.
 	addPictureTool(server, h)
