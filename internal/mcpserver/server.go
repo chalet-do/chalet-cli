@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/basecamp/mcp/gateway"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -37,6 +38,11 @@ func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger 
 	if err != nil {
 		return nil, err
 	}
+	if !cfg.Writes {
+		readOnly := *narrowed
+		readOnly.Rules = strings.TrimSpace(readOnly.Rules + "\n" + readOnlyRule)
+		narrowed = &readOnly
+	}
 	domains, err := narrowed.GatewayDomains()
 	if err != nil {
 		return nil, err
@@ -55,7 +61,7 @@ func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger 
 	}
 
 	server := gw.BuildMCPServer(&mcp.Implementation{Name: "chalet-cli", Title: "Chalet", Version: version}, logger)
-	server.AddReceivingMiddleware(instructions(cat.Rules))
+	server.AddReceivingMiddleware(instructions(narrowed.Rules))
 
 	// Whatever the domains: a picture can sit in the words of any of them.
 	addPictureTool(server, h)
@@ -66,6 +72,11 @@ func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger 
 	}
 	return &Server{mcp: server, Tools: append(tools, pictureTool)}, nil
 }
+
+// Without --writes the change tools are simply absent, and an agent that
+// cannot see them tells the owner Chalet cannot do the thing. So the rules
+// say they exist and how the owner turns them on.
+const readOnlyRule = "- This server only reads. Chalet also moves, edits and comments — every chalet_*_write tool and chalet_destructive — once the owner starts it as `chalet mcp --writes` (the args of the chalet server in their MCP config). When a task needs a change, tell them that; never say Chalet cannot do it."
 
 // Run serves until the client goes away.
 func (s *Server) Run(ctx context.Context, transport mcp.Transport) error {

@@ -140,6 +140,18 @@ func TestToolsSplitByEffectWithHonestAnnotations(t *testing.T) {
 	}
 }
 
+func TestReadOnlySaysHowToWrite(t *testing.T) {
+	for _, writes := range []bool{false, true} {
+		session, _, _ := serve(t, Config{Writes: writes}, nil)
+		said := strings.Contains(session.InitializeResult().Instructions, "chalet mcp --writes") &&
+			strings.Contains(mcptest.ListTools(t, session)["chalet_my"].Description, "chalet mcp --writes")
+
+		if said == writes {
+			t.Errorf("writes=%v: the read-only rule in the instructions and the first tool = %v", writes, said)
+		}
+	}
+}
+
 func TestInstructionsCarryTheRules(t *testing.T) {
 	session, _, _ := serve(t, Config{}, nil)
 
