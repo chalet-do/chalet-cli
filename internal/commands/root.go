@@ -29,7 +29,7 @@ func Execute() int {
 		SilenceErrors: true,
 	}
 	root.PersistentFlags().StringVar(&profileFlag, "profile", "", "which Chalet to use (default: the profile you signed in with first)")
-	root.AddCommand(authCommand(), mcpCommand())
+	root.AddCommand(authCommand(), mcpCommand(), doctorCommand())
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

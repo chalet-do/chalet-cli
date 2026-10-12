@@ -135,6 +135,12 @@ func KeychainWarning() string {
 	return keychain().FallbackWarning()
 }
 
+// UsingKeychain reports whether the token is kept in the system keychain
+// rather than in a file.
+func UsingKeychain() bool {
+	return keychain().UsingKeyring()
+}
+
 // Probed once per process, and bounded: a keychain that hangs must not hang
 // an MCP server's start.
 var keychain = sync.OnceValue(func() *credstore.Store {

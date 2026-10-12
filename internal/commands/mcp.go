@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/chalet-do/chalet-cli/internal/browser"
+	"github.com/chalet-do/chalet-cli/internal/chalet"
 	"github.com/chalet-do/chalet-cli/internal/config"
 	"github.com/chalet-do/chalet-cli/internal/mcpserver"
 )
@@ -42,14 +44,7 @@ func mcpCommand() *cobra.Command {
 				return err
 			}
 
-			resp, err := client.Do(cmd.Context(), "GET", "/agent_catalog", nil, nil, nil)
-			if err != nil {
-				return err
-			}
-			if !resp.OK() {
-				return fmt.Errorf("could not read the catalog: %s", resp.Error())
-			}
-			catalog, err := mcpserver.ParseCatalog(resp.Body)
+			catalog, err := loadCatalog(cmd.Context(), client)
 			if err != nil {
 				return err
 			}
@@ -72,4 +67,16 @@ func mcpCommand() *cobra.Command {
 	_ = cmd.Flags().MarkHidden("writes")
 	cmd.Flags().StringSliceVar(&cfg.Domains, "domains", nil, "serve only these domains (comma-separated, e.g. my,todos)")
 	return cmd
+}
+
+// loadCatalog reads the app's catalog: every tool chalet serves comes from it.
+func loadCatalog(ctx context.Context, client *chalet.Client) (*mcpserver.Catalog, error) {
+	resp, err := client.Do(ctx, "GET", "/agent_catalog", nil, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	if !resp.OK() {
+		return nil, fmt.Errorf("could not read the catalog: %s", resp.Error())
+	}
+	return mcpserver.ParseCatalog(resp.Body)
 }
