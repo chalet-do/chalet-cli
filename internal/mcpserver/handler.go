@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,6 +23,7 @@ import (
 type API interface {
 	Do(ctx context.Context, method, path string, query url.Values, body map[string]any, header http.Header) (*chalet.Response, error)
 	Fetch(ctx context.Context, link string) (*chalet.Response, error)
+	Upload(ctx context.Context, path string) (string, error)
 }
 
 // Opener shows the owner a web page: the app's confirm page for a call that
@@ -49,6 +51,9 @@ func (h handler) handle(ctx context.Context, dom gateway.Domain, op gateway.Oper
 
 	path, query, body, err := buildRequest(operation, params)
 	if err != nil {
+		return gateway.ErrorResult("%v", err), nil
+	}
+	if err := h.uploadFiles(ctx, operation, body); err != nil {
 		return gateway.ErrorResult("%v", err), nil
 	}
 
@@ -142,6 +147,39 @@ func buildRequest(op *catalog.Operation, params map[string]any) (string, url.Val
 		}
 	}
 	return path, query, rest, nil
+}
+
+// A field the catalog marks as files (its items' format is "upload") takes
+// local files: each full path is put up first (chalet.Client.Upload) and its
+// signed id goes in its place. Whatever is not a full path — a signed id
+// already — goes as it came. The same for every operation with such a field,
+// so a field of files the app opens tomorrow needs no release here.
+func (h handler) uploadFiles(ctx context.Context, op *catalog.Operation, body map[string]any) error {
+	properties, _ := op.Body["properties"].(map[string]any)
+	for name, value := range body {
+		schema, _ := properties[name].(map[string]any)
+		items, _ := schema["items"].(map[string]any)
+		if items["format"] != "upload" {
+			continue
+		}
+
+		list, ok := value.([]any)
+		if !ok {
+			return fmt.Errorf("%s takes a list of files", name)
+		}
+		for i, item := range list {
+			path, ok := item.(string)
+			if !ok || !filepath.IsAbs(path) {
+				continue
+			}
+			signedID, err := h.api.Upload(ctx, path)
+			if err != nil {
+				return err
+			}
+			list[i] = signedID
+		}
+	}
+	return nil
 }
 
 // Ids and numbers alike travel as the plain text a URL carries.
