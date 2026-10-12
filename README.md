@@ -85,6 +85,9 @@ path stays the same after an upgrade. Then quit and reopen Claude Desktop.
 - Claude sees the pictures in Chalet — a screenshot in a card, a to-do, a
   comment or a chat line — as smaller copies that Chalet makes for it. Your
   token goes only to your Chalet, never to where the files are stored.
+- Claude can put files from your computer into Chalet's Docs & Files: it
+  names each file's full path, and chalet sends it up. chalet never sends a
+  hidden file, or one in a hidden folder such as `~/.ssh`.
 - Claude never trashes or archives anything by itself. It opens Chalet's
   confirm page in your browser, and nothing happens until you click there. The
   link works for ten minutes, and only for you.

@@ -21,6 +21,12 @@ tool per area, called as `{"action": "...", "params": {...}}`, with a
   confirm page, where the owner's click does the call. This side only opens
   the link (`internal/browser`) and says so. Never decide here which call is
   dangerous, and never send a 428'd call again.
+- Files are a shape, like the confirmation: a body field whose items have the
+  format `upload` takes local files. `uploadFiles` (`internal/mcpserver`)
+  puts each full path up first — the app's direct upload, then the bytes to
+  storage without the token (`chalet.Client.Upload`) — and sends the signed
+  id in its place. Never a relative path, never a hidden file or one in a
+  hidden folder: the path comes from an agent.
 - Never retry a write. Never follow a redirect. Never print, log or pass the
   token as an argument.
 - stdout belongs to the MCP wire in `chalet mcp`; log to stderr.
