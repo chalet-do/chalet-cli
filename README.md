@@ -92,6 +92,14 @@ path stays the same after an upgrade. Then quit and reopen Claude Desktop.
   confirm page in your browser, and nothing happens until you click there. The
   link works for ten minutes, and only for you.
 
+## When something does not work
+
+    chalet doctor
+
+It checks your sign-in, your token, that Chalet answers, where the token is
+kept, and whether a newer chalet is out. Each line says `ok`, `warning` or
+`problem`, and what to do. `--json` prints the same as JSON.
+
 ## Update and remove
 
     brew upgrade chalet         # Scoop: scoop update chalet

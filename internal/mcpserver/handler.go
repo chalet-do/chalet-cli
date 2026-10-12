@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -42,24 +43,25 @@ type handler struct {
 func (h handler) handle(ctx context.Context, dom gateway.Domain, op gateway.Operation, params map[string]any) (*mcp.CallToolResult, error) {
 	domain, ok := dom.(*catalog.Domain)
 	if !ok {
-		return gateway.ErrorResult("internal error: domain %q is not a catalog domain", dom.Name()), nil
+		return failed(nil, fmt.Errorf("internal error: domain %q is not a catalog domain", dom.Name()), false), nil
 	}
 	operation, ok := domain.Operation(op.Action)
 	if !ok {
-		return gateway.ErrorResult("internal error: no action %q in %q", op.Action, dom.Name()), nil
+		return failed(nil, fmt.Errorf("internal error: no action %q in %q", op.Action, dom.Name()), false), nil
 	}
+	write := !operation.ReadOnly
 
 	path, query, body, err := buildRequest(operation, params)
 	if err != nil {
-		return gateway.ErrorResult("%v", err), nil
+		return failed(nil, err, write), nil
 	}
 	if err := h.uploadFiles(ctx, operation, body); err != nil {
-		return gateway.ErrorResult("%v", err), nil
+		return failed(nil, err, write), nil
 	}
 
 	resp, err := h.api.Do(ctx, operation.Method, path, query, body, nil)
 	if err != nil {
-		return gateway.ErrorResult("%v", err), nil
+		return failed(nil, err, write), nil
 	}
 
 	// A token never runs a trash or an archive: the app answers 428 with its
@@ -69,7 +71,7 @@ func (h handler) handle(ctx context.Context, dom gateway.Domain, op gateway.Oper
 		return h.handOver(resp), nil
 	}
 
-	return h.result(resp)
+	return h.result(resp, write)
 }
 
 func (h handler) handOver(resp *chalet.Response) *mcp.CallToolResult {
@@ -78,7 +80,7 @@ func (h handler) handOver(resp *chalet.Response) *mcp.CallToolResult {
 		ConfirmURL string `json:"confirm_url"`
 	}
 	if err := json.Unmarshal(resp.Body, &ask); err != nil || ask.ConfirmURL == "" {
-		return gateway.ErrorResult("Chalet answered %s", resp.Error())
+		return failed(resp, nil, true)
 	}
 
 	where := "The confirm page is open in the owner's browser"
@@ -95,9 +97,9 @@ func (h handler) handOver(resp *chalet.Response) *mcp.CallToolResult {
 // next one starts, and a refusal is an error result in the app's own words.
 // A create needs nothing more: the app answers it with the record (Fizzy's
 // render :show, status: :created).
-func (h handler) result(resp *chalet.Response) (*mcp.CallToolResult, error) {
+func (h handler) result(resp *chalet.Response, write bool) (*mcp.CallToolResult, error) {
 	if !resp.OK() {
-		return gateway.ErrorResult("Chalet answered %s%s", resp.Error(), hint(resp)), nil
+		return failed(resp, nil, write), nil
 	}
 	if len(strings.TrimSpace(string(resp.Body))) == 0 {
 		return gateway.JSONResult(map[string]any{"status": resp.Status})
@@ -216,18 +218,61 @@ func nextPage(header http.Header) string {
 	return ""
 }
 
-func hint(resp *chalet.Response) string {
-	switch resp.Status {
-	case http.StatusUnauthorized:
-		return " — the token is wrong, revoked, or may only read. The owner can make a new one in Chalet's settings and run `chalet auth login`."
-	case http.StatusNotFound:
-		return " — the id is wrong, the thing is gone, or the owner cannot reach it."
-	case http.StatusForbidden:
-		return " — the owner may not do this, or it is not open to agents."
-	case http.StatusUnprocessableEntity:
-		return ": " + string(resp.Body)
+// failed is every error a tool answers, as one small JSON object an agent can
+// branch on: the sentence and its hint for the owner, a stable code, and
+// whether the same call may go again. A call that got no answer, and Chalet's
+// 429, 502, 503 and 504, may — though chalet itself never sends a write twice
+// (chalet.Client.Do), so for a write the hint says to look first. An error
+// that is not Chalet's answer nor the network's is this side's own refusal of
+// the call: bad_request.
+func failed(resp *chalet.Response, err error, write bool) *mcp.CallToolResult {
+	answer := struct {
+		OK        bool   `json:"ok"`
+		Error     string `json:"error"`
+		Code      string `json:"code"`
+		Retryable bool   `json:"retryable"`
+		Hint      string `json:"hint,omitempty"`
+	}{Code: "bad_request"}
+
+	var unreachable *url.Error
+	switch {
+	case errors.As(err, &unreachable):
+		answer.Error, answer.Code, answer.Retryable = err.Error(), "unavailable", true
+	case err != nil:
+		answer.Error = err.Error()
+	default:
+		answer.Error = "Chalet answered " + resp.Error()
+		answer.Code, answer.Retryable, answer.Hint = refusal(resp)
 	}
-	return ""
+	if answer.Retryable && write {
+		answer.Hint = strings.TrimSpace(answer.Hint + " chalet never sends a write twice: check whether it was done before you call again.")
+	}
+
+	data, _ := json.Marshal(answer)
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: string(data)}}}
+}
+
+func refusal(resp *chalet.Response) (code string, retryable bool, hint string) {
+	switch resp.Status {
+	case http.StatusBadRequest:
+		return "bad_request", false, ""
+	case http.StatusUnauthorized:
+		return "unauthorized", false, "The token is wrong, revoked, or may only read. The owner can make a new one in Chalet's settings and run `chalet auth login`."
+	case http.StatusForbidden:
+		return "forbidden", false, "The owner may not do this, or it is not open to agents."
+	case http.StatusNotFound:
+		return "not_found", false, "The id is wrong, the thing is gone, or the owner cannot reach it."
+	case http.StatusUnprocessableEntity:
+		return "invalid", false, string(resp.Body)
+	case http.StatusTooManyRequests:
+		return "rate_limited", true, "Too many calls: wait a little before the next."
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return "unavailable", true, ""
+	}
+	if resp.Status >= 500 {
+		return "unavailable", false, ""
+	}
+	return "refused", false, ""
 }
 
 func names[V any](set map[string]V) string {

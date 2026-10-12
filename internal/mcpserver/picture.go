@@ -2,9 +2,10 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 
-	"github.com/basecamp/mcp/gateway"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -40,10 +41,10 @@ func addPictureTool(server *mcp.Server, h handler) {
 func (h handler) picture(ctx context.Context, _ *mcp.CallToolRequest, in pictureInput) (*mcp.CallToolResult, any, error) {
 	resp, err := h.api.Fetch(ctx, in.URL)
 	if err != nil {
-		return gateway.ErrorResult("%v", err), nil, nil
+		return failed(nil, err, false), nil, nil
 	}
 	if !resp.OK() {
-		return gateway.ErrorResult("Chalet answered %s%s", resp.Error(), hint(resp)), nil, nil
+		return failed(resp, nil, false), nil, nil
 	}
 
 	// What the bytes are, not what a header says: storage may call any file
@@ -51,12 +52,12 @@ func (h handler) picture(ctx context.Context, _ *mcp.CallToolRequest, in picture
 	switch kind := http.DetectContentType(resp.Body); kind {
 	case "image/png", "image/jpeg", "image/gif", "image/webp":
 		if len(resp.Body) > pictureLimit {
-			return gateway.ErrorResult("The picture is %d KB, too big to show. Its preview_url is a smaller copy.", len(resp.Body)>>10), nil, nil
+			return failed(nil, fmt.Errorf("The picture is %d KB, too big to show. Its preview_url is a smaller copy.", len(resp.Body)>>10), false), nil, nil
 		}
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.ImageContent{Data: resp.Body, MIMEType: kind}}}, nil, nil
 	case "text/html; charset=utf-8":
-		return gateway.ErrorResult("Chalet answered with a page, not a file: the link is not one from its answers, or the owner cannot see the file."), nil, nil
+		return failed(nil, errors.New("Chalet answered with a page, not a file: the link is not one from its answers, or the owner cannot see the file."), false), nil, nil
 	default:
-		return gateway.ErrorResult("Not a picture (%s, %d KB): only pictures can be shown.", kind, len(resp.Body)>>10), nil, nil
+		return failed(nil, fmt.Errorf("Not a picture (%s, %d KB): only pictures can be shown.", kind, len(resp.Body)>>10), false), nil, nil
 	}
 }

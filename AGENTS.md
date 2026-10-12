@@ -27,6 +27,17 @@ tool per area, called as `{"action": "...", "params": {...}}`, with a
   storage without the token (`chalet.Client.Upload`) — and sends the signed
   id in its place. Never a relative path, never a hidden file or one in a
   hidden folder: the path comes from an agent.
+- Every error a tool answers is one JSON object, made by `failed`
+  (`internal/mcpserver/handler.go`): `ok` (false), `error` (the sentence),
+  `code`, `retryable` and `hint`. The codes are stable, because an agent
+  branches on them: `bad_request` (this side refused the call: a missing or
+  unknown parameter, a file it will not send; the gateway's own refusals get
+  this shape in `oneErrorShape`), `unauthorized`, `forbidden`,
+  `not_found`, `invalid` (422), `rate_limited` (429), `unavailable` (no
+  answer, or a 5xx) and `refused` (any other 4xx). `retryable` is true only
+  for no answer, 429, 502, 503 and 504; for a write, the hint adds that chalet
+  never sends one twice and the agent should check before it calls again. The
+  428 is not an error: it stays the confirmation (`handOver`).
 - Never retry a write. Never follow a redirect. Never print, log or pass the
   token as an argument.
 - stdout belongs to the MCP wire in `chalet mcp`; log to stderr.
@@ -45,6 +56,23 @@ Against the app running locally (`http://` is accepted for localhost only):
 
 `internal/mcpserver/testdata/catalog.json` is the catalog as the app serves it;
 refresh it from a running app when the catalog's shape changes.
+
+`chalet doctor` checks the profile, the token, the catalog, the keychain and
+the latest release. Like everything here, it checks shapes, never a feature.
+
+How well a model drives the tools is `TestAgentEval`, with the MCP library's
+`eval` package: it makes requests in plain words from the recorded catalog's
+tools, asks a model for the call, and grades the answer by rule. Nothing
+reaches Chalet. By default the oracle answers, for free, which checks the
+harness. To score a model, name it, with an Anthropic API key (it costs a
+few cents):
+
+    CHALET_EVAL_MODEL=claude-haiku-4-5 ANTHROPIC_API_KEY=... \
+      go test -count=1 -run TestAgentEval -v ./internal/mcpserver
+
+The report is the test's log; a low score fails nothing. With the model set
+and no key, the test skips and says so. Refresh the recorded catalog first to
+score the tools as the app serves them today.
 
 ## Releasing
 

@@ -6,6 +6,8 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -55,7 +57,7 @@ func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger 
 	}
 
 	server := gw.BuildMCPServer(&mcp.Implementation{Name: "chalet-cli", Title: "Chalet", Version: version}, logger)
-	server.AddReceivingMiddleware(instructions(narrowed.Rules))
+	server.AddReceivingMiddleware(instructions(narrowed.Rules), oneErrorShape)
 
 	// Whatever the domains: a picture can sit in the words of any of them.
 	addPictureTool(server, h)
@@ -74,6 +76,21 @@ func (s *Server) Run(ctx context.Context, transport mcp.Transport) error {
 		return err
 	}
 	return session.Wait()
+}
+
+// The gateway refuses some calls itself, in plain words — an unknown action,
+// a write when serving read-only — and those get the shape of every other
+// error (failed).
+func oneErrorShape(next mcp.MethodHandler) mcp.MethodHandler {
+	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+		result, err := next(ctx, method, req)
+		if r, ok := result.(*mcp.CallToolResult); ok && r.IsError && len(r.Content) == 1 {
+			if text, ok := r.Content[0].(*mcp.TextContent); ok && !json.Valid([]byte(text.Text)) {
+				return failed(nil, errors.New(text.Text), false), err
+			}
+		}
+		return result, err
+	}
 }
 
 // The gateway builds its server without instructions, so the rules are put

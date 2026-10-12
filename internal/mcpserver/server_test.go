@@ -2,11 +2,13 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -220,7 +222,7 @@ func TestAPictureIsAnImageAndTheTokenStaysWithChalet(t *testing.T) {
 	}
 
 	text, isError := mcptest.CallText(t, session, "chalet_picture", map[string]any{"url": "https://elsewhere.example/shot.png"})
-	if !isError || !strings.Contains(text, "not a link into Chalet") {
+	if got := refusedWith(t, text); !isError || got.Code != "bad_request" || !strings.Contains(got.Error, "not a link into Chalet") {
 		t.Fatalf("elsewhere = %q (error %v)", text, isError)
 	}
 }
@@ -229,23 +231,82 @@ func TestMistakesAreInBand(t *testing.T) {
 	session, app, _ := serve(t, Config{Writes: true}, nil)
 
 	text, isError := mcptest.CallText(t, session, "chalet_todos_write", map[string]any{"action": "complete", "params": map[string]any{}})
-	if !isError || !strings.Contains(text, `needs "todo_id"`) {
+	if got := refusedWith(t, text); !isError || got.Code != "bad_request" || !strings.Contains(got.Error, `needs "todo_id"`) {
 		t.Errorf("missing id = %q", text)
 	}
 
 	text, isError = mcptest.CallText(t, session, "chalet_todos_write", map[string]any{"action": "complete", "params": map[string]any{"todo_id": "todo-1", "colour": "red"}})
-	if !isError || !strings.Contains(text, `takes no "colour"`) {
+	if got := refusedWith(t, text); !isError || got.Code != "bad_request" || !strings.Contains(got.Error, `takes no "colour"`) {
 		t.Errorf("unknown key = %q", text)
 	}
 
 	text, isError = mcptest.CallText(t, session, "chalet_todos_write", map[string]any{"action": "complete", "params": map[string]any{"todo_id": "elsewhere"}})
-	if !isError || !strings.Contains(text, "404 Not found") {
+	if got := refusedWith(t, text); !isError || got.Code != "not_found" || got.Retryable || got.Error != "Chalet answered 404 Not found" || !strings.Contains(got.Hint, "The id is wrong") {
 		t.Errorf("out of reach = %q", text)
+	}
+
+	// The gateway's own refusals take the same shape.
+	text, isError = mcptest.CallText(t, session, "chalet_todos_write", map[string]any{"action": "uncomplete"})
+	if got := refusedWith(t, text); !isError || got.Code != "bad_request" || !strings.Contains(got.Error, `unknown action "uncomplete"`) {
+		t.Errorf("unknown action = %q", text)
 	}
 
 	if len(app.sent()) != 1 {
 		t.Errorf("only the well-formed call reaches the app, sent %d", len(app.sent()))
 	}
+}
+
+// Every error names a stable code, and says whether the same call may go
+// again: only when no answer came, or Chalet was busy or briefly away. A
+// write is never sent twice by chalet, and its hint says to look first.
+func TestErrorsCarryACodeAndWhetherToRetry(t *testing.T) {
+	answer := func(status int, body string) *chalet.Response {
+		return &chalet.Response{Status: status, Body: []byte(body)}
+	}
+	for _, c := range []struct {
+		resp      *chalet.Response
+		err       error
+		write     bool
+		code      string
+		retryable bool
+		hint      string
+	}{
+		{resp: answer(401, `{"error":"Unauthorized"}`), code: "unauthorized", hint: "chalet auth login"},
+		{resp: answer(403, `{"error":"Forbidden"}`), code: "forbidden", hint: "not open to agents"},
+		{resp: answer(422, `{"error":"Title can't be blank"}`), write: true, code: "invalid", hint: `{"error":"Title can't be blank"}`},
+		{resp: answer(429, ``), code: "rate_limited", retryable: true, hint: "wait a little"},
+		{resp: answer(503, ``), write: true, code: "unavailable", retryable: true, hint: "never sends a write twice"},
+		{resp: answer(500, ``), code: "unavailable"},
+		{resp: answer(409, ``), code: "refused"},
+		{err: &url.Error{Op: "Get", URL: "https://chalet.test/1/my", Err: errors.New("connection refused")}, code: "unavailable", retryable: true},
+		{err: errors.New(`complete needs "todo_id"`), code: "bad_request"},
+	} {
+		res := failed(c.resp, c.err, c.write)
+		got := refusedWith(t, res.Content[0].(*mcp.TextContent).Text)
+		if !res.IsError || got.OK || got.Code != c.code || got.Retryable != c.retryable || !strings.Contains(got.Hint, c.hint) || got.Error == "" {
+			t.Errorf("%v %v = %+v, want %s retryable %v", c.resp, c.err, got, c.code, c.retryable)
+		}
+		if !c.write && strings.Contains(got.Hint, "write") {
+			t.Errorf("a read's hint speaks of writes: %q", got.Hint)
+		}
+	}
+}
+
+type refusalAnswer struct {
+	OK        bool   `json:"ok"`
+	Error     string `json:"error"`
+	Code      string `json:"code"`
+	Retryable bool   `json:"retryable"`
+	Hint      string `json:"hint"`
+}
+
+func refusedWith(t *testing.T, text string) refusalAnswer {
+	t.Helper()
+	var got refusalAnswer
+	if err := json.Unmarshal([]byte(text), &got); err != nil {
+		t.Fatalf("an error result is not JSON: %q", text)
+	}
+	return got
 }
 
 func TestNarrowingFailsClosed(t *testing.T) {
