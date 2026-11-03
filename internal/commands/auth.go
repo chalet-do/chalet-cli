@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/chalet-do/chalet-cli/internal/chalet"
+	"github.com/chalet-do/chalet-cli/chalet"
 	"github.com/chalet-do/chalet-cli/internal/config"
 )
 

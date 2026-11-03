@@ -8,10 +8,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
+	"github.com/chalet-do/chalet-cli/chalet"
 	"github.com/chalet-do/chalet-cli/internal/browser"
-	"github.com/chalet-do/chalet-cli/internal/chalet"
 	"github.com/chalet-do/chalet-cli/internal/config"
-	"github.com/chalet-do/chalet-cli/internal/mcpserver"
+	"github.com/chalet-do/chalet-cli/mcpserver"
 )
 
 // A seam so tests can drive the server over memory instead of stdin/stdout.

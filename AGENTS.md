@@ -17,18 +17,25 @@ The tools follow the gateway convention of the MCP library in `go.mod`: one
 tool per area, called as `{"action": "...", "params": {...}}`, with a
 `describe` action for each action's parameters.
 
+**`chalet` and `mcpserver` are a library.** chalet-mcp-server, the server for
+the hosted clients in its own private repo, serves the same tools over HTTP
+with these two packages, so stdio and HTTP cannot drift apart. Change them as
+an API: an exported name, a `Config` field or what `New` serves changes only
+on purpose. chalet-mcp-server pins a chalet-cli version and moves it with its
+own tests as the gate. What only this command line uses stays in `internal/`.
+
 - The confirmation is the app's: a 428 carries its question and a link to its
   confirm page, where the owner's click does the call. This side only opens
   the link (`internal/browser`) and says so. Never decide here which call is
   dangerous, and never send a 428'd call again.
 - Files are a shape, like the confirmation: a body field whose items have the
-  format `upload` takes local files. `uploadFiles` (`internal/mcpserver`)
+  format `upload` takes local files. `uploadFiles` (`mcpserver`)
   puts each full path up first — the app's direct upload, then the bytes to
   storage without the token (`chalet.Client.Upload`) — and sends the signed
   id in its place. Never a relative path, never a hidden file or one in a
   hidden folder: the path comes from an agent.
 - Every error a tool answers is one JSON object, made by `failed`
-  (`internal/mcpserver/handler.go`): `ok` (false), `error` (the sentence),
+  (`mcpserver/handler.go`): `ok` (false), `error` (the sentence),
   `code`, `retryable` and `hint`. The codes are stable, because an agent
   branches on them: `bad_request` (this side refused the call: a missing or
   unknown parameter, a file it will not send; the gateway's own refusals get
@@ -54,7 +61,7 @@ Against the app running locally (`http://` is accepted for localhost only):
     chalet auth login --profile dev --url http://localhost:3007 --account 1
     claude mcp add --scope user chalet-dev -- "$(go env GOPATH)/bin/chalet" mcp --writes --profile dev
 
-`internal/mcpserver/testdata/catalog.json` is the catalog as the app serves it;
+`mcpserver/testdata/catalog.json` is the catalog as the app serves it;
 refresh it from a running app when the catalog's shape changes.
 
 `chalet doctor` checks the profile, the token, the catalog, the keychain and
@@ -68,7 +75,7 @@ harness. To score a model, name it, with an Anthropic API key (it costs a
 few cents):
 
     CHALET_EVAL_MODEL=claude-haiku-4-5 ANTHROPIC_API_KEY=... \
-      go test -count=1 -run TestAgentEval -v ./internal/mcpserver
+      go test -count=1 -run TestAgentEval -v ./mcpserver
 
 The report is the test's log; a low score fails nothing. With the model set
 and no key, the test skips and says so. Refresh the recorded catalog first to

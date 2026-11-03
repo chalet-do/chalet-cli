@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/chalet-do/chalet-cli/internal/chalet"
+	"github.com/chalet-do/chalet-cli/chalet"
 )
 
 func TestAccountName(t *testing.T) {
