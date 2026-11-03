@@ -1,7 +1,7 @@
 github.com/basecamp/cli v0.2.2-0.20260914054534-08b975c113f6 h1:WFFZ+wI6vTzQ6D3fxCDD7BGiSSNDgB69lYsoXXl/DQs=
 github.com/basecamp/cli v0.2.2-0.20260914054534-08b975c113f6/go.mod h1:iTBTaWvsPEFIcZfkxQHEfISyJ6sZ7036K6bNx0RY3EE=
-github.com/basecamp/mcp v0.0.0-20260910231116-bbf690fc1b14 h1:DNGbvdkOxIwS0WHcGj2qBe86cMMGt/v2OkSTblRTIf0=
-github.com/basecamp/mcp v0.0.0-20260910231116-bbf690fc1b14/go.mod h1:Ee2c/q1/pg+5T5741PIuA3s6VJMQC7I0XBNXIHIujzA=
+github.com/basecamp/mcp v0.0.0-20261030141750-45f0629c39c7 h1:YSK9Mh5SHE/udUGoK7hFOo1b8tCmOMwB65EB4GKyqk4=
+github.com/basecamp/mcp v0.0.0-20261030141750-45f0629c39c7/go.mod h1:D4/jDq7KKJ/SBw/gCFbcI6PT33pcje7I+YLbn4r1cuM=
 github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
 github.com/danieljoos/wincred v1.2.3 h1:v7dZC2x32Ut3nEfRH+vhoZGvN72+dQ/snVXo/vMFLdQ=
 github.com/danieljoos/wincred v1.2.3/go.mod h1:6qqX0WNrS4RzPZ1tnroDzq9kY3fu1KwE7MRLQK4X0bs=

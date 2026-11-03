@@ -23,17 +23,29 @@ with these two packages, so stdio and HTTP cannot drift apart. Change them as
 an API: an exported name, a `Config` field or what `New` serves changes only
 on purpose. chalet-mcp-server pins a chalet-cli version and moves it with its
 own tests as the gate. What only this command line uses stays in `internal/`.
+A server for others serves `Server.MCP` over its own transport and sets what
+differs there: no `Opener`, its own words for signing in again
+(`Config.SignIn`), and `Config.Refused`, which hears each refusal of the app,
+such as a dead token or a grant that may only read. Nothing that only HTTP
+uses belongs here.
 
 - The confirmation is the app's: a 428 carries its question and a link to its
   confirm page, where the owner's click does the call. This side only opens
-  the link (`internal/browser`) and says so. Never decide here which call is
-  dangerous, and never send a 428'd call again.
+  the link (`internal/browser`), or hands it over where there is no browser
+  (a nil `Opener`), and says so. Never decide here which call is dangerous,
+  and never send a 428'd call again.
 - Files are a shape, like the confirmation: a body field whose items have the
   format `upload` takes local files. `uploadFiles` (`mcpserver`)
   puts each full path up first — the app's direct upload, then the bytes to
   storage without the token (`chalet.Client.Upload`) — and sends the signed
   id in its place. Never a relative path, never a hidden file or one in a
-  hidden folder: the path comes from an agent.
+  hidden folder: the path comes from an agent. A server that does not run
+  where the person's files are implements `API` with an `Upload` that
+  refuses: there a full path is a `bad_request`.
+- A text result is cut below 140,000 bytes where the cut can be explained
+  (`capped`, the toolkit's `result.Cap`): Claude takes about 150,000
+  characters of one. Not a picture: the cap would withhold it whole, and it
+  keeps its own bound (`pictureLimit`).
 - Every error a tool answers is one JSON object, made by `failed`
   (`mcpserver/handler.go`): `ok` (false), `error` (the sentence),
   `code`, `retryable` and `hint`. The codes are stable, because an agent

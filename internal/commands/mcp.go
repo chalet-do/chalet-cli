@@ -44,7 +44,7 @@ func mcpCommand() *cobra.Command {
 				return err
 			}
 
-			catalog, err := loadCatalog(cmd.Context(), client)
+			catalog, err := mcpserver.LoadCatalog(cmd.Context(), client)
 			if err != nil {
 				return err
 			}
@@ -91,16 +91,4 @@ func accountName(ctx context.Context, client *chalet.Client) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("the token does not reach account %s", client.Account)
-}
-
-// loadCatalog reads the app's catalog: every tool chalet serves comes from it.
-func loadCatalog(ctx context.Context, client *chalet.Client) (*mcpserver.Catalog, error) {
-	resp, err := client.Do(ctx, "GET", "/agent_catalog", nil, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	if !resp.OK() {
-		return nil, fmt.Errorf("could not read the catalog: %s", resp.Error())
-	}
-	return mcpserver.ParseCatalog(resp.Body)
 }

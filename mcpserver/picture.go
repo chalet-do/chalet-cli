@@ -44,7 +44,7 @@ func (h handler) picture(ctx context.Context, _ *mcp.CallToolRequest, in picture
 		return failed(nil, err, false), nil, nil
 	}
 	if !resp.OK() {
-		return failed(resp, nil, false), nil, nil
+		return h.refusedBy(ctx, resp, false), nil, nil
 	}
 
 	// What the bytes are, not what a header says: storage may call any file

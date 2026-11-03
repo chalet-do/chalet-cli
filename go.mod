@@ -4,7 +4,7 @@ go 1.26.7
 
 require (
 	github.com/basecamp/cli v0.2.2-0.20260914054534-08b975c113f6
-	github.com/basecamp/mcp v0.0.0-20260910231116-bbf690fc1b14
+	github.com/basecamp/mcp v0.0.0-20261030141750-45f0629c39c7
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/term v0.46.0

@@ -20,7 +20,9 @@ import (
 	"github.com/chalet-do/chalet-cli/chalet"
 )
 
-// API is the slice of chalet.Client the handler drives.
+// API is the slice of chalet.Client the handler drives. A server implements
+// it around its own client: one that does not run where the person's files
+// are refuses Upload.
 type API interface {
 	Do(ctx context.Context, method, path string, query url.Values, body map[string]any, header http.Header) (*chalet.Response, error)
 	Fetch(ctx context.Context, link string) (*chalet.Response, error)
@@ -28,13 +30,15 @@ type API interface {
 }
 
 // Opener shows the owner a web page: the app's confirm page for a call that
-// waits for their click.
+// waits for their click. Nil on a server, which hands the link over instead.
 type Opener func(link string) error
 
 type handler struct {
-	api    API
-	open   Opener
-	logger *slog.Logger
+	api     API
+	open    Opener
+	logger  *slog.Logger
+	signIn  string
+	refused func(context.Context, *chalet.Response)
 }
 
 // handle turns one tool call into one request to the app. The calling
@@ -71,7 +75,7 @@ func (h handler) handle(ctx context.Context, dom gateway.Domain, op gateway.Oper
 		return h.handOver(resp), nil
 	}
 
-	return h.result(resp, write)
+	return h.result(ctx, resp, write)
 }
 
 func (h handler) handOver(resp *chalet.Response) *mcp.CallToolResult {
@@ -83,10 +87,13 @@ func (h handler) handOver(resp *chalet.Response) *mcp.CallToolResult {
 		return failed(resp, nil, true)
 	}
 
-	where := "The confirm page is open in the owner's browser"
-	if err := h.open(ask.ConfirmURL); err != nil {
-		h.logger.Warn("could not open the browser", "error", err)
-		where = "Give the owner the confirm page"
+	where := "Give the owner the confirm page"
+	if h.open != nil { // a server has no browser to open
+		if err := h.open(ask.ConfirmURL); err != nil {
+			h.logger.Warn("could not open the browser", "error", err)
+		} else {
+			where = "The confirm page is open in the owner's browser"
+		}
 	}
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf(
 		"Not done yet: %s %s: %s — nothing changes until they click there. Do not call this again.",
@@ -97,9 +104,9 @@ func (h handler) handOver(resp *chalet.Response) *mcp.CallToolResult {
 // next one starts, and a refusal is an error result in the app's own words.
 // A create needs nothing more: the app answers it with the record (Fizzy's
 // render :show, status: :created).
-func (h handler) result(resp *chalet.Response, write bool) (*mcp.CallToolResult, error) {
+func (h handler) result(ctx context.Context, resp *chalet.Response, write bool) (*mcp.CallToolResult, error) {
 	if !resp.OK() {
-		return failed(resp, nil, write), nil
+		return h.refusedBy(ctx, resp, write), nil
 	}
 	if len(strings.TrimSpace(string(resp.Body))) == 0 {
 		return gateway.JSONResult(map[string]any{"status": resp.Status})
@@ -218,14 +225,29 @@ func nextPage(header http.Header) string {
 	return ""
 }
 
+// refusedBy is the app's refusal of a call, as the tool's error. The server's
+// Refused hook hears it first.
+func (h handler) refusedBy(ctx context.Context, resp *chalet.Response, write bool) *mcp.CallToolResult {
+	if h.refused != nil {
+		h.refused(ctx, resp)
+	}
+	return h.failed(resp, nil, write)
+}
+
+// failed is handler.failed for an error that no server's own words change.
+func failed(resp *chalet.Response, err error, write bool) *mcp.CallToolResult {
+	return handler{}.failed(resp, err, write)
+}
+
 // failed is every error a tool answers, as one small JSON object an agent can
 // branch on: the sentence and its hint for the owner, a stable code, and
 // whether the same call may go again. A call that got no answer, and Chalet's
 // 429, 502, 503 and 504, may — though chalet itself never sends a write twice
 // (chalet.Client.Do), so for a write the hint says to look first. An error
 // that is not Chalet's answer nor the network's is this side's own refusal of
-// the call: bad_request.
-func failed(resp *chalet.Response, err error, write bool) *mcp.CallToolResult {
+// the call: bad_request. An unauthorized one says how to sign in again in
+// the server's words, when it has its own (Config.SignIn).
+func (h handler) failed(resp *chalet.Response, err error, write bool) *mcp.CallToolResult {
 	answer := struct {
 		OK        bool   `json:"ok"`
 		Error     string `json:"error"`
@@ -243,6 +265,9 @@ func failed(resp *chalet.Response, err error, write bool) *mcp.CallToolResult {
 	default:
 		answer.Error = "Chalet answered " + resp.Error()
 		answer.Code, answer.Retryable, answer.Hint = refusal(resp)
+		if resp.Status == http.StatusUnauthorized && h.signIn != "" {
+			answer.Hint = h.signIn
+		}
 	}
 	if answer.Retryable && write {
 		answer.Hint = strings.TrimSpace(answer.Hint + " chalet never sends a write twice: check whether it was done before you call again.")

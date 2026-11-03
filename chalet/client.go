@@ -1,5 +1,6 @@
 // Package chalet speaks to the Chalet JSON API: the same URLs as the pages,
-// asked for JSON, with a personal access token as the bearer header.
+// asked for JSON, with a token as the bearer header — a personal access
+// token, or the short-lived one a server trades a person's token for.
 package chalet
 
 import (

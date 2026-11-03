@@ -107,7 +107,7 @@ func serve(t *testing.T, cfg Config, browserErr error) (*mcp.ClientSession, *fak
 	if err != nil {
 		t.Fatal(err)
 	}
-	return mcptest.Connect(t, server.mcp), app, &opened
+	return mcptest.Connect(t, server.MCP), app, &opened
 }
 
 func TestReadOnlyUnlessWrites(t *testing.T) {
@@ -217,6 +217,36 @@ func TestTheLinkSurvivesNoBrowser(t *testing.T) {
 	}
 }
 
+// A server for others, such as chalet-mcp-server, opens no browser, says in
+// its own words how to sign in again, and hears each refusal of the app first.
+func TestAServerForOthers(t *testing.T) {
+	httpServer := httptest.NewServer(&fakeApp{})
+	t.Cleanup(httpServer.Close)
+
+	var heard []int
+	cfg := Config{Writes: true, SignIn: "Reconnect the app to Chalet.", Refused: func(_ context.Context, resp *chalet.Response) { heard = append(heard, resp.Status) }}
+	client := &chalet.Client{BaseURL: httpServer.URL, Account: "1", Token: "chalet_pat_test"}
+	server, err := New(recordedCatalog(t), client, nil, cfg, "test", slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := mcptest.Connect(t, server.MCP)
+
+	text, isError := mcptest.CallText(t, session, "chalet_destructive", map[string]any{"action": "trash", "params": map[string]any{"recording_id": "todo-1"}})
+	if isError || !strings.Contains(text, "Not done yet: Trash “Call Anna” in Website? Give the owner the confirm page: "+confirmURL) {
+		t.Fatalf("trash = %q (error %v)", text, isError)
+	}
+
+	client.Token = "chalet_pat_revoked"
+	text, isError = mcptest.CallText(t, session, "chalet_my", map[string]any{"action": "work"})
+	if got := refusedWith(t, text); !isError || got.Code != "unauthorized" || got.Hint != "Reconnect the app to Chalet." {
+		t.Fatalf("a dead token = %q", text)
+	}
+	if len(heard) != 1 || heard[0] != http.StatusUnauthorized {
+		t.Errorf("the hook heard %v: the 428 is no refusal, the 401 is", heard)
+	}
+}
+
 // A picture comes back as an image, and the token goes to Chalet alone: not
 // down the redirect to storage, and never to a link on another host.
 func TestAPictureIsAnImageAndTheTokenStaysWithChalet(t *testing.T) {
@@ -238,6 +268,44 @@ func TestAPictureIsAnImageAndTheTokenStaysWithChalet(t *testing.T) {
 	text, isError := mcptest.CallText(t, session, "chalet_picture", map[string]any{"url": "https://elsewhere.example/shot.png"})
 	if got := refusedWith(t, text); !isError || got.Code != "bad_request" || !strings.Contains(got.Error, "not a link into Chalet") {
 		t.Fatalf("elsewhere = %q (error %v)", text, isError)
+	}
+}
+
+// bigAnswers is an API whose every answer is more than Claude takes in one
+// tool result.
+type bigAnswers struct{}
+
+var bigPicture = webp + strings.Repeat(" ", 300<<10)
+
+func (bigAnswers) Do(context.Context, string, string, url.Values, map[string]any, http.Header) (*chalet.Response, error) {
+	return &chalet.Response{Status: http.StatusOK, Body: []byte("[" + strings.Repeat(`{"id":"todo-1","title":"Call Anna"},`, 10_000) + "{}]")}, nil
+}
+
+func (bigAnswers) Fetch(context.Context, string) (*chalet.Response, error) {
+	return &chalet.Response{Status: http.StatusOK, Body: []byte(bigPicture)}, nil
+}
+
+func (bigAnswers) Upload(context.Context, string) (string, error) { return "", nil }
+
+// A text result is cut to what Claude takes, and says so; a picture is no
+// text, and comes whole.
+func TestResultsFitButPicturesComeWhole(t *testing.T) {
+	server, err := New(recordedCatalog(t), bigAnswers{}, nil, Config{}, "test", slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := mcptest.Connect(t, server.MCP)
+
+	if text, isError := mcptest.CallText(t, session, "chalet_my", map[string]any{"action": "work"}); isError || len(text) >= 150_000 || !strings.Contains(text, `"truncated":true`) {
+		t.Errorf("work = %d bytes (error %v): %.200s", len(text), isError, text)
+	}
+
+	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "chalet_picture", Arguments: map[string]any{"url": "https://chalet.test/1/shot"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if image, ok := res.Content[0].(*mcp.ImageContent); res.IsError || !ok || len(image.Data) != len(bigPicture) {
+		t.Errorf("picture = %T (error %v)", res.Content[0], res.IsError)
 	}
 }
 
