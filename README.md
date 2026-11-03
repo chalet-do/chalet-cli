@@ -77,6 +77,17 @@ to `claude_desktop_config.json` with its full path:
 `~/.local/share/mise/shims/chalet` with your home folder written out, so the
 path stays the same after an upgrade. Then quit and reopen Claude Desktop.
 
+## More than one account
+
+Connect each account as its own profile, with a token made in that account:
+
+    chalet auth login --profile work --account 2
+    claude mcp add --scope user chalet-work -- chalet mcp --profile work
+
+In Claude Desktop, add a second entry beside `chalet` with
+`"args": ["mcp", "--profile", "work"]`. Each server tells Claude which account
+it reaches, and Claude asks when a request does not say.
+
 ## What Claude can do
 
 - Claude reaches only what you can reach in Chalet.

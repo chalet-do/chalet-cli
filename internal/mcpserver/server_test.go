@@ -150,6 +150,20 @@ func TestInstructionsCarryTheRules(t *testing.T) {
 	}
 }
 
+// With a server per account, the account is what tells them apart: in the
+// instructions, and in the first tool for clients that drop those.
+func TestTheRulesNameTheAccount(t *testing.T) {
+	session, _, _ := serve(t, Config{Account: "submissio (https://chalet.test/2/)"}, nil)
+
+	named := "This server reaches one Chalet account: submissio (https://chalet.test/2/)."
+	if instructions := session.InitializeResult().Instructions; !strings.HasPrefix(instructions, named) || !strings.Contains(instructions, "Never guess one") {
+		t.Fatalf("instructions = %q", instructions)
+	}
+	if description := mcptest.ListTools(t, session)["chalet_my"].Description; !strings.Contains(description, named) {
+		t.Errorf("chalet_my = %q", description)
+	}
+}
+
 func TestReadAndWrite(t *testing.T) {
 	session, app, _ := serve(t, Config{Writes: true}, nil)
 

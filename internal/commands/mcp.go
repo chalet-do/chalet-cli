@@ -49,6 +49,12 @@ func mcpCommand() *cobra.Command {
 				return err
 			}
 
+			// Without the name the server still serves; the tools answer
+			// for themselves if the token no longer works.
+			if cfg.Account, err = accountName(cmd.Context(), client); err != nil {
+				logger.Warn("could not name the account", "error", err)
+			}
+
 			server, err := mcpserver.New(catalog, client, browser.Open, cfg, Version, logger)
 			if err != nil {
 				return err
@@ -67,6 +73,24 @@ func mcpCommand() *cobra.Command {
 	_ = cmd.Flags().MarkHidden("writes")
 	cmd.Flags().StringSliceVar(&cfg.Domains, "domains", nil, "serve only these domains (comma-separated, e.g. my,todos)")
 	return cmd
+}
+
+// accountName is the profile's account as "name (url)", as the server names
+// it to Claude. Asked without the account in the path, like auth status: the
+// identity answers with every account its token reaches.
+func accountName(ctx context.Context, client *chalet.Client) (string, error) {
+	unscoped := *client
+	unscoped.Account = ""
+	who, err := whoIs(ctx, &unscoped)
+	if err != nil {
+		return "", err
+	}
+	for _, account := range who.Accounts {
+		if fmt.Sprint(account.ID) == client.Account {
+			return fmt.Sprintf("%s (%s)", account.Name, account.URL), nil
+		}
+	}
+	return "", fmt.Errorf("the token does not reach account %s", client.Account)
 }
 
 // loadCatalog reads the app's catalog: every tool chalet serves comes from it.
