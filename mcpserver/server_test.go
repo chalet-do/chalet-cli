@@ -270,6 +270,19 @@ func TestMistakesAreInBand(t *testing.T) {
 	}
 }
 
+// A tool that is not there is the client's mistake and the SDK's error. The
+// SDK hands the middleware no result for it, and the server stays up.
+func TestAnUnknownToolLeavesTheServerStanding(t *testing.T) {
+	session, _, _ := serve(t, Config{}, nil)
+
+	if _, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "chalet_nope", Arguments: map[string]any{}}); err == nil || !strings.Contains(err.Error(), `unknown tool "chalet_nope"`) {
+		t.Fatalf("an unknown tool = %v", err)
+	}
+	if text, isError := mcptest.CallText(t, session, "chalet_my", map[string]any{"action": "work"}); isError || !strings.Contains(text, "Call Anna") {
+		t.Fatalf("work after it = %q (error %v)", text, isError)
+	}
+}
+
 // Every error names a stable code, and says whether the same call may go
 // again: only when no answer came, or Chalet was busy or briefly away. A
 // write is never sent twice by chalet, and its hint says to look first.

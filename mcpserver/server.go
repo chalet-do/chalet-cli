@@ -90,11 +90,11 @@ func (s *Server) Run(ctx context.Context, transport mcp.Transport) error {
 
 // The gateway refuses some calls itself, in plain words — an unknown action,
 // a write when serving read-only — and those get the shape of every other
-// error (failed).
+// error (failed). A call of an unknown tool comes back as a nil result.
 func oneErrorShape(next mcp.MethodHandler) mcp.MethodHandler {
 	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 		result, err := next(ctx, method, req)
-		if r, ok := result.(*mcp.CallToolResult); ok && r.IsError && len(r.Content) == 1 {
+		if r, ok := result.(*mcp.CallToolResult); ok && r != nil && r.IsError && len(r.Content) == 1 {
 			if text, ok := r.Content[0].(*mcp.TextContent); ok && !json.Valid([]byte(text.Text)) {
 				return failed(nil, errors.New(text.Text), false), err
 			}
