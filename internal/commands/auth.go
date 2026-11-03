@@ -28,6 +28,7 @@ type identity struct {
 	Accounts     []struct {
 		ID   int    `json:"id"`
 		Name string `json:"name"`
+		URL  string `json:"url"`
 		User struct {
 			Name string `json:"name"`
 			Role string `json:"role"`

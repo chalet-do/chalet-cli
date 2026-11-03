@@ -23,6 +23,10 @@ type Config struct {
 	// Domains narrows to these domains, empty for all. An unknown name stops
 	// the server rather than serving less than asked for.
 	Domains []string
+	// Account is the account this server reaches, as "name (url)". It goes
+	// in front of the rules, so that Claude can tell this server from one
+	// for another account (a profile each). Empty leaves it out.
+	Account string
 }
 
 // Server is the MCP server for one account.
@@ -38,6 +42,12 @@ func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger 
 	narrowed, err := cat.Narrow(cfg.Domains)
 	if err != nil {
 		return nil, err
+	}
+	// A copy: Narrow hands back the catalog itself when it keeps everything.
+	if cfg.Account != "" {
+		named := *narrowed
+		named.Rules = "This server reaches one Chalet account: " + cfg.Account + ". If the owner connected other Chalet accounts as other servers, use the one the request is about, and ask when it is unclear.\n\n" + named.Rules
+		narrowed = &named
 	}
 	domains, err := narrowed.GatewayDomains()
 	if err != nil {
