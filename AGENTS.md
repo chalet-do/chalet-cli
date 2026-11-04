@@ -22,11 +22,12 @@ the hosted clients in its own repo, serves the same tools over HTTP with
 these two packages, so stdio and HTTP cannot drift apart. Change them as an
 API: an exported name, a `Config` field or what `New` serves changes only on
 purpose. chalet-mcp-server pins a chalet-cli version and moves it with its
-own tests as the gate. What only this command line uses stays in `internal/`.
-A server for others serves `Server.MCP` over its own transport and sets what
-differs there: no `Opener`, its own words for signing in again
-(`Config.SignIn`), and its own `API` around the client, where it sees every
-answer of the app. Nothing that only HTTP uses belongs here.
+own tests as the gate. What only this command line uses stays in `internal/`,
+and the library names no command: each program passes its own words for
+signing in again (`Config.SignIn`). A server for others serves `Server.MCP`
+over its own transport and sets what differs there: no `Opener`, and its own
+`API` around the client, where it sees every answer of the app. Nothing that
+only HTTP uses belongs here.
 
 - The confirmation is the app's: a 428 carries its question and a link to its
   confirm page, where the owner's click does the call. This side only opens

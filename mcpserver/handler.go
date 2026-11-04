@@ -224,7 +224,8 @@ func nextPage(header http.Header) string {
 	return ""
 }
 
-// failed is handler.failed for an error that no server's own words change.
+// failed is handler.failed for an error that needs none of the program's
+// own words.
 func failed(resp *chalet.Response, err error, write bool) *mcp.CallToolResult {
 	return handler{}.failed(resp, err, write)
 }
@@ -235,8 +236,9 @@ func failed(resp *chalet.Response, err error, write bool) *mcp.CallToolResult {
 // 429, 502, 503 and 504, may — though chalet itself never sends a write twice
 // (chalet.Client.Do), so for a write the hint says to look first. An error
 // that is not Chalet's answer nor the network's is this side's own refusal of
-// the call: bad_request. An unauthorized one says how to sign in again in
-// the server's words, when it has its own (Config.SignIn).
+// the call: bad_request. An unauthorized one says how to sign in again in the
+// words of the program that serves (Config.SignIn): this layer names no
+// command.
 func (h handler) failed(resp *chalet.Response, err error, write bool) *mcp.CallToolResult {
 	answer := struct {
 		OK        bool   `json:"ok"`
@@ -255,7 +257,7 @@ func (h handler) failed(resp *chalet.Response, err error, write bool) *mcp.CallT
 	default:
 		answer.Error = "Chalet answered " + resp.Error()
 		answer.Code, answer.Retryable, answer.Hint = refusal(resp)
-		if resp.Status == http.StatusUnauthorized && h.signIn != "" {
+		if resp.Status == http.StatusUnauthorized {
 			answer.Hint = h.signIn
 		}
 	}
@@ -272,7 +274,7 @@ func refusal(resp *chalet.Response) (code string, retryable bool, hint string) {
 	case http.StatusBadRequest:
 		return "bad_request", false, ""
 	case http.StatusUnauthorized:
-		return "unauthorized", false, "The token is wrong, revoked, or may only read. The owner can make a new one in Chalet's settings and run `chalet auth login`."
+		return "unauthorized", false, ""
 	case http.StatusForbidden:
 		return "forbidden", false, "The owner may not do this, or it is not open to agents."
 	case http.StatusNotFound:

@@ -17,6 +17,9 @@ import (
 // A seam so tests can drive the server over memory instead of stdin/stdout.
 var mcpTransport = func() mcp.Transport { return &mcp.StdioTransport{} }
 
+// How the owner signs in again here, for the hint of an unauthorized answer.
+const signIn = "The token is wrong, revoked, or may only read. The owner can make a new one in Chalet's settings and run `chalet auth login`."
+
 func mcpCommand() *cobra.Command {
 	var cfg mcpserver.Config
 	var readOnly bool
@@ -34,7 +37,7 @@ func mcpCommand() *cobra.Command {
 			"agent_notes": "Long-running server; stdout speaks the MCP wire protocol. Not for interactive use.",
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg.Writes = !readOnly
+			cfg.Writes, cfg.SignIn = !readOnly, signIn
 
 			// Logs go to stderr: stdout belongs to the MCP wire.
 			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil))

@@ -42,7 +42,7 @@ type Config struct {
 	// one for another account (a profile each). None leaves them out.
 	Account chalet.Account
 	// SignIn is the hint of an unauthorized answer: how the person signs in
-	// again. Empty says to make a new token and run `chalet auth login`.
+	// again, in the words of the program that serves. Empty gives no hint.
 	SignIn string
 }
 

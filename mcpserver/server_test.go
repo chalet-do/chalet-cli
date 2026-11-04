@@ -471,7 +471,7 @@ func TestErrorsCarryACodeAndWhetherToRetry(t *testing.T) {
 		retryable bool
 		hint      string
 	}{
-		{resp: answer(401, `{"error":"Unauthorized"}`), code: "unauthorized", hint: "chalet auth login"},
+		{resp: answer(401, `{"error":"Unauthorized"}`), code: "unauthorized"},
 		{resp: answer(403, `{"error":"Forbidden"}`), code: "forbidden", hint: "not open to agents"},
 		{resp: answer(422, `{"error":"Title can't be blank"}`), write: true, code: "invalid", hint: `{"error":"Title can't be blank"}`},
 		{resp: answer(429, ``), code: "rate_limited", retryable: true, hint: "wait a little"},
@@ -489,6 +489,12 @@ func TestErrorsCarryACodeAndWhetherToRetry(t *testing.T) {
 		if !c.write && strings.Contains(got.Hint, "write") {
 			t.Errorf("a read's hint speaks of writes: %q", got.Hint)
 		}
+	}
+
+	// This layer names no command: how to sign in again is the program's to
+	// say (Config.SignIn).
+	if got := refusedWith(t, failed(answer(401, ``), nil, false).Content[0].(*mcp.TextContent).Text); got.Hint != "" {
+		t.Errorf("an unauthorized answer without the program's words hints %q", got.Hint)
 	}
 }
 
