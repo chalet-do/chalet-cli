@@ -41,11 +41,6 @@ type Config struct {
 	// SignIn is the hint of an unauthorized answer: how the person signs in
 	// again. Empty says to make a new token and run `chalet auth login`.
 	SignIn string
-	// Refused, when set, hears each refusal of a call by the app before it
-	// becomes the tool's error. A server that signs people in hears there
-	// that a token died (401), or that a grant may only read (403 with
-	// insufficient_scope). The 428 of a confirmation is no refusal.
-	Refused func(ctx context.Context, resp *chalet.Response)
 }
 
 // Server is the MCP server for one account. MCP is what a transport serves:
@@ -79,7 +74,7 @@ func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger 
 		return nil, err
 	}
 
-	h := handler{api: api, open: open, logger: logger, signIn: cfg.SignIn, refused: cfg.Refused}
+	h := handler{api: api, open: open, logger: logger, signIn: cfg.SignIn}
 	gw, err := gateway.New(domains, gateway.Config{
 		ReadOnly: !cfg.Writes,
 		Handler:  h.handle,

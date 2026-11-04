@@ -234,14 +234,13 @@ func TestTheLinkSurvivesNoBrowser(t *testing.T) {
 	}
 }
 
-// A server for others, such as chalet-mcp-server, opens no browser, says in
-// its own words how to sign in again, and hears each refusal of the app first.
+// A server for others, such as chalet-mcp-server, opens no browser and says
+// in its own words how to sign in again.
 func TestAServerForOthers(t *testing.T) {
 	httpServer := httptest.NewServer(&fakeApp{})
 	t.Cleanup(httpServer.Close)
 
-	var heard []int
-	cfg := Config{Writes: true, SignIn: "Reconnect the app to Chalet.", Refused: func(_ context.Context, resp *chalet.Response) { heard = append(heard, resp.Status) }}
+	cfg := Config{Writes: true, SignIn: "Reconnect the app to Chalet."}
 	client := &chalet.Client{BaseURL: httpServer.URL, Account: "1", Token: "chalet_pat_test"}
 	server, err := New(recordedCatalog(t), client, nil, cfg, "test", slog.New(slog.DiscardHandler))
 	if err != nil {
@@ -258,9 +257,6 @@ func TestAServerForOthers(t *testing.T) {
 	text, isError = mcptest.CallText(t, session, "chalet_my", map[string]any{"action": "work"})
 	if got := refusedWith(t, text); !isError || got.Code != "unauthorized" || got.Hint != "Reconnect the app to Chalet." {
 		t.Fatalf("a dead token = %q", text)
-	}
-	if len(heard) != 1 || heard[0] != http.StatusUnauthorized {
-		t.Errorf("the hook heard %v: the 428 is no refusal, the 401 is", heard)
 	}
 }
 

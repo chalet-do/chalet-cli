@@ -34,11 +34,10 @@ type API interface {
 type Opener func(link string) error
 
 type handler struct {
-	api     API
-	open    Opener
-	logger  *slog.Logger
-	signIn  string
-	refused func(context.Context, *chalet.Response)
+	api    API
+	open   Opener
+	logger *slog.Logger
+	signIn string
 }
 
 // handle turns one tool call into one request to the app. The calling
@@ -75,7 +74,7 @@ func (h handler) handle(ctx context.Context, dom gateway.Domain, op gateway.Oper
 		return h.handOver(resp), nil
 	}
 
-	return h.result(ctx, resp, write)
+	return h.result(resp, write)
 }
 
 func (h handler) handOver(resp *chalet.Response) *mcp.CallToolResult {
@@ -104,9 +103,9 @@ func (h handler) handOver(resp *chalet.Response) *mcp.CallToolResult {
 // next one starts, and a refusal is an error result in the app's own words.
 // A create needs nothing more: the app answers it with the record (Fizzy's
 // render :show, status: :created).
-func (h handler) result(ctx context.Context, resp *chalet.Response, write bool) (*mcp.CallToolResult, error) {
+func (h handler) result(resp *chalet.Response, write bool) (*mcp.CallToolResult, error) {
 	if !resp.OK() {
-		return h.refusedBy(ctx, resp, write), nil
+		return h.failed(resp, nil, write), nil
 	}
 	if len(strings.TrimSpace(string(resp.Body))) == 0 {
 		return gateway.JSONResult(map[string]any{"status": resp.Status})
@@ -223,15 +222,6 @@ func nextPage(header http.Header) string {
 		}
 	}
 	return ""
-}
-
-// refusedBy is the app's refusal of a call, as the tool's error. The server's
-// Refused hook hears it first.
-func (h handler) refusedBy(ctx context.Context, resp *chalet.Response, write bool) *mcp.CallToolResult {
-	if h.refused != nil {
-		h.refused(ctx, resp)
-	}
-	return h.failed(resp, nil, write)
 }
 
 // failed is handler.failed for an error that no server's own words change.
