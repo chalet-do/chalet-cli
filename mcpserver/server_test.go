@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -118,6 +119,21 @@ func TestReadOnlyUnlessWrites(t *testing.T) {
 
 	if got := keys(mcptest.ListTools(t, session)); strings.Join(got, ",") != "chalet_my,chalet_picture" {
 		t.Fatalf("read-only serves only the read tools, got %v", got)
+	}
+}
+
+// A read-only server names the tools it holds back, which need write; a
+// server that may write holds none back.
+func TestAReadOnlyServerNamesWhatItHoldsBack(t *testing.T) {
+	client := &chalet.Client{BaseURL: "http://localhost:1", Account: "1"}
+	for writes, want := range map[bool]string{false: "chalet_destructive,chalet_todos_write", true: ""} {
+		server, err := New(recordedCatalog(t), client, nil, Config{Writes: writes}, "test", slog.New(slog.DiscardHandler))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Join(slices.Sorted(slices.Values(server.HeldBack)), ","); got != want {
+			t.Errorf("writes %v: held back %q, want %q", writes, got, want)
+		}
 	}
 }
 

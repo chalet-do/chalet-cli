@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+	"slices"
 	"strings"
 
 	"github.com/basecamp/mcp/gateway"
@@ -46,10 +47,13 @@ type Config struct {
 }
 
 // Server is the MCP server for one account. MCP is what a transport serves:
-// stdio in Run, or any other the caller connects it to.
+// stdio in Run, or any other the caller connects it to. Tools are the tools
+// it serves. HeldBack are the tools a read-only server leaves out, which a
+// server that may write serves: a call of one needs write.
 type Server struct {
-	MCP   *mcp.Server
-	Tools []string
+	MCP      *mcp.Server
+	Tools    []string
+	HeldBack []string
 }
 
 // New builds the tools from the catalog and hands them to the gateway. A
@@ -94,11 +98,17 @@ func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger 
 	// Whatever the domains: a picture can sit in the words of any of them.
 	addPictureTool(server, h)
 
-	var tools []string
+	var tools, heldBack []string
 	for _, d := range gw.Domains() {
 		tools = append(tools, d.ToolName())
 	}
-	return &Server{MCP: server, Tools: append(tools, pictureTool)}, nil
+	// What the gateway's read-only rule left out of the same domains.
+	for _, d := range domains {
+		if !slices.Contains(tools, d.ToolName()) {
+			heldBack = append(heldBack, d.ToolName())
+		}
+	}
+	return &Server{MCP: server, Tools: append(tools, pictureTool), HeldBack: heldBack}, nil
 }
 
 // Run serves until the client goes away.
