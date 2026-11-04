@@ -154,21 +154,32 @@ func oneErrorShape(next mcp.MethodHandler) mcp.MethodHandler {
 }
 
 // capped holds a text result under resultLimit, cut where the cut can be
-// explained (the toolkit's result.Cap). Not a picture: the cap would withhold
-// it whole, and it has a bound of its own (pictureLimit).
+// explained (the toolkit's result.Cap).
 func capped(next mcp.MethodHandler) mcp.MethodHandler {
 	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 		res, err := next(ctx, method, req)
-		if r, ok := res.(*mcp.CallToolResult); ok && r != nil && !(len(r.Content) == 1 && isImage(r.Content[0])) {
+		if r, ok := res.(*mcp.CallToolResult); ok && r != nil && !fits(r) {
 			return result.Cap(r, resultLimit), err
 		}
 		return res, err
 	}
 }
 
-func isImage(c mcp.Content) bool {
-	_, ok := c.(*mcp.ImageContent)
-	return ok
+// fits reports a result the cap need not measure. Every result is one text
+// block or one picture. A picture has a bound of its own (pictureLimit), and
+// the cap would withhold it whole; a text fits when it cannot reach the limit
+// even with each byte escaped to six, and the envelope beside it.
+func fits(r *mcp.CallToolResult) bool {
+	if len(r.Content) != 1 {
+		return false
+	}
+	switch c := r.Content[0].(type) {
+	case *mcp.ImageContent:
+		return true
+	case *mcp.TextContent:
+		return 6*len(c.Text)+1024 <= resultLimit
+	}
+	return false
 }
 
 // The gateway builds its server without instructions, so the rules are put
