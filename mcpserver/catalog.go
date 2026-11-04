@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -8,6 +9,8 @@ import (
 
 	"github.com/basecamp/mcp/catalog"
 	"github.com/basecamp/mcp/gateway"
+
+	"github.com/chalet-do/chalet-cli/chalet"
 )
 
 // SupportedMajor is the catalog version this build understands. A newer
@@ -46,6 +49,18 @@ type Operation struct {
 	Params     []catalog.Param `json:"params"`
 	Body       map[string]any  `json:"body"`
 	Paginated  bool            `json:"paginated"`
+}
+
+// LoadCatalog reads the app's catalog: every tool chalet serves comes from it.
+func LoadCatalog(ctx context.Context, client *chalet.Client) (*Catalog, error) {
+	resp, err := client.Do(ctx, "GET", "/agent_catalog", nil, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	if !resp.OK() {
+		return nil, fmt.Errorf("could not read the catalog: %s", resp.Error())
+	}
+	return ParseCatalog(resp.Body)
 }
 
 // ParseCatalog reads the app's catalog and refuses one this build cannot

@@ -2,8 +2,6 @@ package commands
 
 import (
 	"bufio"
-	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -12,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/chalet-do/chalet-cli/internal/chalet"
+	"github.com/chalet-do/chalet-cli/chalet"
 	"github.com/chalet-do/chalet-cli/internal/config"
 )
 
@@ -20,20 +18,6 @@ func authCommand() *cobra.Command {
 	auth := &cobra.Command{Use: "auth", Short: "Sign in to Chalet with a personal access token"}
 	auth.AddCommand(loginCommand(), statusCommand(), logoutCommand())
 	return auth
-}
-
-// identity is GET /my/identity.json: who a token belongs to, and where.
-type identity struct {
-	EmailAddress string `json:"email_address"`
-	Accounts     []struct {
-		ID   int    `json:"id"`
-		Name string `json:"name"`
-		URL  string `json:"url"`
-		User struct {
-			Name string `json:"name"`
-			Role string `json:"role"`
-		} `json:"user"`
-	} `json:"accounts"`
 }
 
 func loginCommand() *cobra.Command {
@@ -61,7 +45,7 @@ func loginCommand() *cobra.Command {
 				return err
 			}
 
-			who, err := whoIs(cmd.Context(), &chalet.Client{BaseURL: baseURL, Token: token, UserAgent: "chalet-cli/" + Version})
+			who, err := (&chalet.Client{BaseURL: baseURL, Token: token, UserAgent: "chalet-cli/" + Version}).Identity(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -104,8 +88,7 @@ func statusCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client.Account = ""
-			who, err := whoIs(cmd.Context(), client)
+			who, err := client.Identity(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -139,21 +122,6 @@ func warnAboutKeychain(cmd *cobra.Command) {
 	if warning := config.KeychainWarning(); warning != "" {
 		fmt.Fprintln(cmd.ErrOrStderr(), "Warning:", warning)
 	}
-}
-
-func whoIs(ctx context.Context, client *chalet.Client) (*identity, error) {
-	resp, err := client.Do(ctx, "GET", "/my/identity", nil, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	if !resp.OK() {
-		return nil, fmt.Errorf("Chalet refused the token: %s", resp.Error())
-	}
-	var who identity
-	if err := json.Unmarshal(resp.Body, &who); err != nil {
-		return nil, fmt.Errorf("unexpected answer from %s: %w", client.BaseURL, err)
-	}
-	return &who, nil
 }
 
 // From a terminal the token is typed blind; from a pipe it is the first line.

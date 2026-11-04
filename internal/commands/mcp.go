@@ -8,14 +8,17 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
+	"github.com/chalet-do/chalet-cli/chalet"
 	"github.com/chalet-do/chalet-cli/internal/browser"
-	"github.com/chalet-do/chalet-cli/internal/chalet"
 	"github.com/chalet-do/chalet-cli/internal/config"
-	"github.com/chalet-do/chalet-cli/internal/mcpserver"
+	"github.com/chalet-do/chalet-cli/mcpserver"
 )
 
 // A seam so tests can drive the server over memory instead of stdin/stdout.
 var mcpTransport = func() mcp.Transport { return &mcp.StdioTransport{} }
+
+// How the owner signs in again here, for the hint of an unauthorized answer.
+const signIn = "The token is wrong, revoked, or may only read. The owner can make a new one in Chalet's settings and run `chalet auth login`."
 
 func mcpCommand() *cobra.Command {
 	var cfg mcpserver.Config
@@ -34,7 +37,7 @@ func mcpCommand() *cobra.Command {
 			"agent_notes": "Long-running server; stdout speaks the MCP wire protocol. Not for interactive use.",
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg.Writes = !readOnly
+			cfg.Writes, cfg.SignIn = !readOnly, signIn
 
 			// Logs go to stderr: stdout belongs to the MCP wire.
 			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil))
@@ -44,14 +47,14 @@ func mcpCommand() *cobra.Command {
 				return err
 			}
 
-			catalog, err := loadCatalog(cmd.Context(), client)
+			catalog, err := mcpserver.LoadCatalog(cmd.Context(), client)
 			if err != nil {
 				return err
 			}
 
 			// Without the name the server still serves; the tools answer
 			// for themselves if the token no longer works.
-			if cfg.Account, err = accountName(cmd.Context(), client); err != nil {
+			if cfg.Account, err = account(cmd.Context(), client); err != nil {
 				logger.Warn("could not name the account", "error", err)
 			}
 
@@ -75,32 +78,17 @@ func mcpCommand() *cobra.Command {
 	return cmd
 }
 
-// accountName is the profile's account as "name (url)", as the server names
-// it to Claude. Asked without the account in the path, like auth status: the
+// account is the profile's account, as the server names it to Claude: the
 // identity answers with every account its token reaches.
-func accountName(ctx context.Context, client *chalet.Client) (string, error) {
-	unscoped := *client
-	unscoped.Account = ""
-	who, err := whoIs(ctx, &unscoped)
+func account(ctx context.Context, client *chalet.Client) (chalet.Account, error) {
+	who, err := client.Identity(ctx)
 	if err != nil {
-		return "", err
+		return chalet.Account{}, err
 	}
-	for _, account := range who.Accounts {
-		if fmt.Sprint(account.ID) == client.Account {
-			return fmt.Sprintf("%s (%s)", account.Name, account.URL), nil
+	for _, a := range who.Accounts {
+		if fmt.Sprint(a.ID) == client.Account {
+			return a, nil
 		}
 	}
-	return "", fmt.Errorf("the token does not reach account %s", client.Account)
-}
-
-// loadCatalog reads the app's catalog: every tool chalet serves comes from it.
-func loadCatalog(ctx context.Context, client *chalet.Client) (*mcpserver.Catalog, error) {
-	resp, err := client.Do(ctx, "GET", "/agent_catalog", nil, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	if !resp.OK() {
-		return nil, fmt.Errorf("could not read the catalog: %s", resp.Error())
-	}
-	return mcpserver.ParseCatalog(resp.Body)
+	return chalet.Account{}, fmt.Errorf("the token does not reach account %s", client.Account)
 }

@@ -10,7 +10,7 @@ import (
 
 	"github.com/basecamp/mcp/catalog"
 
-	"github.com/chalet-do/chalet-cli/internal/chalet"
+	"github.com/chalet-do/chalet-cli/chalet"
 )
 
 // uploader is an API that puts each file up as "signed:<path>".

@@ -17,10 +17,12 @@ import (
 	"github.com/basecamp/mcp/gateway"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/chalet-do/chalet-cli/internal/chalet"
+	"github.com/chalet-do/chalet-cli/chalet"
 )
 
-// API is the slice of chalet.Client the handler drives.
+// API is the slice of chalet.Client the handler drives. A server implements
+// it around its own client: one that does not run where the person's files
+// are refuses Upload.
 type API interface {
 	Do(ctx context.Context, method, path string, query url.Values, body map[string]any, header http.Header) (*chalet.Response, error)
 	Fetch(ctx context.Context, link string) (*chalet.Response, error)
@@ -28,13 +30,14 @@ type API interface {
 }
 
 // Opener shows the owner a web page: the app's confirm page for a call that
-// waits for their click.
+// waits for their click. Nil on a server, which hands the link over instead.
 type Opener func(link string) error
 
 type handler struct {
 	api    API
 	open   Opener
 	logger *slog.Logger
+	signIn string
 }
 
 // handle turns one tool call into one request to the app. The calling
@@ -83,10 +86,13 @@ func (h handler) handOver(resp *chalet.Response) *mcp.CallToolResult {
 		return failed(resp, nil, true)
 	}
 
-	where := "The confirm page is open in the owner's browser"
-	if err := h.open(ask.ConfirmURL); err != nil {
-		h.logger.Warn("could not open the browser", "error", err)
-		where = "Give the owner the confirm page"
+	where := "Give the owner the confirm page"
+	if h.open != nil { // a server has no browser to open
+		if err := h.open(ask.ConfirmURL); err != nil {
+			h.logger.Warn("could not open the browser", "error", err)
+		} else {
+			where = "The confirm page is open in the owner's browser"
+		}
 	}
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf(
 		"Not done yet: %s %s: %s — nothing changes until they click there. Do not call this again.",
@@ -99,7 +105,7 @@ func (h handler) handOver(resp *chalet.Response) *mcp.CallToolResult {
 // render :show, status: :created).
 func (h handler) result(resp *chalet.Response, write bool) (*mcp.CallToolResult, error) {
 	if !resp.OK() {
-		return failed(resp, nil, write), nil
+		return h.failed(resp, nil, write), nil
 	}
 	if len(strings.TrimSpace(string(resp.Body))) == 0 {
 		return gateway.JSONResult(map[string]any{"status": resp.Status})
@@ -218,14 +224,22 @@ func nextPage(header http.Header) string {
 	return ""
 }
 
+// failed is handler.failed for an error that needs none of the program's
+// own words.
+func failed(resp *chalet.Response, err error, write bool) *mcp.CallToolResult {
+	return handler{}.failed(resp, err, write)
+}
+
 // failed is every error a tool answers, as one small JSON object an agent can
 // branch on: the sentence and its hint for the owner, a stable code, and
 // whether the same call may go again. A call that got no answer, and Chalet's
 // 429, 502, 503 and 504, may — though chalet itself never sends a write twice
 // (chalet.Client.Do), so for a write the hint says to look first. An error
 // that is not Chalet's answer nor the network's is this side's own refusal of
-// the call: bad_request.
-func failed(resp *chalet.Response, err error, write bool) *mcp.CallToolResult {
+// the call: bad_request. An unauthorized one says how to sign in again in the
+// words of the program that serves (Config.SignIn): this layer names no
+// command.
+func (h handler) failed(resp *chalet.Response, err error, write bool) *mcp.CallToolResult {
 	answer := struct {
 		OK        bool   `json:"ok"`
 		Error     string `json:"error"`
@@ -243,6 +257,9 @@ func failed(resp *chalet.Response, err error, write bool) *mcp.CallToolResult {
 	default:
 		answer.Error = "Chalet answered " + resp.Error()
 		answer.Code, answer.Retryable, answer.Hint = refusal(resp)
+		if resp.Status == http.StatusUnauthorized {
+			answer.Hint = h.signIn
+		}
 	}
 	if answer.Retryable && write {
 		answer.Hint = strings.TrimSpace(answer.Hint + " chalet never sends a write twice: check whether it was done before you call again.")
@@ -257,7 +274,7 @@ func refusal(resp *chalet.Response) (code string, retryable bool, hint string) {
 	case http.StatusBadRequest:
 		return "bad_request", false, ""
 	case http.StatusUnauthorized:
-		return "unauthorized", false, "The token is wrong, revoked, or may only read. The owner can make a new one in Chalet's settings and run `chalet auth login`."
+		return "unauthorized", false, ""
 	case http.StatusForbidden:
 		return "forbidden", false, "The owner may not do this, or it is not open to agents."
 	case http.StatusNotFound:

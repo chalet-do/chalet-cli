@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/chalet-do/chalet-cli/internal/config"
+	"github.com/chalet-do/chalet-cli/mcpserver"
 )
 
 // Where the latest release is asked for. A variable so tests can stand in.
@@ -81,15 +82,13 @@ func diagnose(ctx context.Context) []check {
 	} else {
 		add("profile", "ok", fmt.Sprintf("%s: %s, account %s", p.Name, p.BaseURL, p.Account), "")
 
-		anyAccount := *client
-		anyAccount.Account = ""
-		if who, err := whoIs(ctx, &anyAccount); err != nil {
+		if who, err := client.Identity(ctx); err != nil {
 			add("token", "problem", err.Error(), "Make a new token in Chalet's Settings › Access tokens, and run `chalet auth login`.")
 		} else {
 			add("token", "ok", "signed in as "+who.EmailAddress, "")
 		}
 
-		if catalog, err := loadCatalog(ctx, client); err != nil {
+		if catalog, err := mcpserver.LoadCatalog(ctx, client); err != nil {
 			add("catalog", "problem", err.Error(), "Upgrade chalet if it says so; otherwise check that Chalet runs at "+p.BaseURL+".")
 		} else {
 			add("catalog", "ok", fmt.Sprintf("version %s, %d operations", catalog.Version, len(catalog.Operations)), "")

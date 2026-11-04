@@ -1,0 +1,206 @@
+// Package mcpserver is the tool layer of `chalet mcp` and of
+// chalet-mcp-server: the toolkit's gateway (basecamp/mcp) serving the tools
+// that the app's catalog describes, each call dispatched as one request to
+// the app's JSON API — and chalet_picture beside them, which hands over a
+// picture that an answer links to. The transport is the caller's: stdio here,
+// HTTP in chalet-mcp-server.
+package mcpserver
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"runtime/debug"
+	"slices"
+	"strings"
+
+	"github.com/basecamp/mcp/gateway"
+	"github.com/basecamp/mcp/result"
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/chalet-do/chalet-cli/chalet"
+)
+
+// The most a text result may weigh, in bytes as it goes on the wire: Claude
+// takes about 150,000 characters of one, and a character is at least a byte.
+const resultLimit = 140_000
+
+// Config selects what the server serves.
+type Config struct {
+	// Writes serves the write and destructive tools as well: `chalet mcp`
+	// sets it unless --read-only, a server for others when the grant may
+	// write. The token's permission is the hard switch.
+	Writes bool
+	// Domains narrows to these domains, empty for all. An unknown name stops
+	// the server rather than serving less than asked for.
+	Domains []string
+	// Account is the account this server reaches. Its name and URL go after
+	// the rules' first paragraph, so that Claude can tell this server from
+	// one for another account (a profile each). None leaves them out.
+	Account chalet.Account
+	// SignIn is the hint of an unauthorized answer: how the person signs in
+	// again, in the words of the program that serves. Empty gives no hint.
+	SignIn string
+}
+
+// Server is the MCP server for one account. MCP is what a transport serves:
+// stdio in Run, or any other the caller connects it to. Tools are the tools
+// it serves. HeldBack are the tools a read-only server leaves out, which a
+// server that may write serves: a call of one needs write.
+type Server struct {
+	MCP      *mcp.Server
+	Tools    []string
+	HeldBack []string
+}
+
+// New builds the tools from the catalog and hands them to the gateway. A
+// server with nothing to serve does not start: an empty tool list reads as
+// "Chalet has nothing" to a client, which is never what was meant.
+func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger *slog.Logger) (*Server, error) {
+	narrowed, err := cat.Narrow(cfg.Domains)
+	if err != nil {
+		return nil, err
+	}
+	// A copy: Narrow hands back the catalog itself when it keeps everything.
+	// The account goes after the rules' first paragraph, not in front: some
+	// clients read only the first 512 characters, and that paragraph must be
+	// whole in them, however long the account's name.
+	if cfg.Account.Name != "" {
+		named := *narrowed
+		opening, rest, _ := strings.Cut(named.Rules, "\n\n")
+		account := "This server reaches one Chalet account: " + cfg.Account.Name + " (" + cfg.Account.URL + "). If the owner connected other Chalet accounts as other servers, use the one the request is about, and ask when it is unclear."
+		named.Rules = strings.TrimSpace(opening + "\n\n" + account + "\n\n" + rest)
+		narrowed = &named
+	}
+	domains, err := narrowed.GatewayDomains()
+	if err != nil {
+		return nil, err
+	}
+
+	h := handler{api: api, open: open, logger: logger, signIn: cfg.SignIn}
+	gw, err := gateway.New(domains, gateway.Config{
+		ReadOnly: !cfg.Writes,
+		Handler:  h.handle,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(gw.Domains()) == 0 {
+		return nil, fmt.Errorf("nothing to serve: the chosen domains have no read actions (drop --read-only to serve their writes)")
+	}
+
+	server := gw.BuildMCPServer(&mcp.Implementation{Name: "chalet-cli", Title: "Chalet", Version: version}, logger)
+	server.AddReceivingMiddleware(recovered(logger), instructions(narrowed.Rules), oneErrorShape, capped)
+
+	// Whatever the domains: a picture can sit in the words of any of them.
+	addPictureTool(server, h)
+
+	var tools, heldBack []string
+	for _, d := range gw.Domains() {
+		tools = append(tools, d.ToolName())
+	}
+	// What the gateway's read-only rule left out of the same domains.
+	for _, d := range domains {
+		if !slices.Contains(tools, d.ToolName()) {
+			heldBack = append(heldBack, d.ToolName())
+		}
+	}
+	return &Server{MCP: server, Tools: append(tools, pictureTool), HeldBack: heldBack}, nil
+}
+
+// Run serves until the client goes away.
+func (s *Server) Run(ctx context.Context, transport mcp.Transport) error {
+	session, err := s.MCP.Connect(ctx, transport, nil)
+	if err != nil {
+		return err
+	}
+	return session.Wait()
+}
+
+// recovered answers a call that panicked with an internal error, and logs the
+// panic and its stack, never the request and so never a token. Outermost, so
+// that it catches a panic in every middleware too: one bad call must stop
+// neither `chalet mcp` nor a server that serves everyone.
+func recovered(logger *slog.Logger) mcp.Middleware {
+	return func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, req mcp.Request) (result mcp.Result, err error) {
+			defer func() {
+				if v := recover(); v != nil {
+					logger.Error("a call panicked", "method", method, "panic", fmt.Sprint(v), "stack", string(debug.Stack()))
+					result, err = nil, &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: "internal error"}
+				}
+			}()
+			return next(ctx, method, req)
+		}
+	}
+}
+
+// The gateway refuses some calls itself, in plain words — an unknown action,
+// a write when serving read-only — and those get the shape of every other
+// error (failed). A call of an unknown tool comes back as a nil result.
+func oneErrorShape(next mcp.MethodHandler) mcp.MethodHandler {
+	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+		result, err := next(ctx, method, req)
+		if r, ok := result.(*mcp.CallToolResult); ok && r != nil && r.IsError && len(r.Content) == 1 {
+			if text, ok := r.Content[0].(*mcp.TextContent); ok && !json.Valid([]byte(text.Text)) {
+				return failed(nil, errors.New(text.Text), false), err
+			}
+		}
+		return result, err
+	}
+}
+
+// capped holds a text result under resultLimit, cut where the cut can be
+// explained (the toolkit's result.Cap).
+func capped(next mcp.MethodHandler) mcp.MethodHandler {
+	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+		res, err := next(ctx, method, req)
+		if r, ok := res.(*mcp.CallToolResult); ok && r != nil && !fits(r) {
+			return result.Cap(r, resultLimit), err
+		}
+		return res, err
+	}
+}
+
+// fits reports a result the cap need not measure. Every result is one text
+// block or one picture. A picture has a bound of its own (pictureLimit), and
+// the cap would withhold it whole; a text fits when it cannot reach the limit
+// even with each byte escaped to six, and the envelope beside it.
+func fits(r *mcp.CallToolResult) bool {
+	if len(r.Content) != 1 {
+		return false
+	}
+	switch c := r.Content[0].(type) {
+	case *mcp.ImageContent:
+		return true
+	case *mcp.TextContent:
+		return 6*len(c.Text)+1024 <= resultLimit
+	}
+	return false
+}
+
+// The gateway builds its server without instructions, so the rules are put
+// into the handshake on the way out — both the classic initialize and the
+// 2026-07-28 discovery. A refused handshake, such as a second initialize,
+// comes back as a nil result.
+func instructions(rules string) mcp.Middleware {
+	return func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			result, err := next(ctx, method, req)
+			switch r := result.(type) {
+			case *mcp.InitializeResult:
+				if r != nil {
+					r.Instructions = rules
+				}
+			case *mcp.DiscoverResult:
+				if r != nil {
+					r.Instructions = rules
+				}
+			}
+			return result, err
+		}
+	}
+}
