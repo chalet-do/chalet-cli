@@ -3,6 +3,7 @@ package chalet
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -31,6 +32,32 @@ func TestAHostileAnswerNeverHandsTheTokenOn(t *testing.T) {
 			}
 			upstreamtest.AssertClean(t, string(kind), text, token, upstreamtest.Planted)
 		})
+	}
+}
+
+// A body goes on whole, as a refusal's hint or a confirm sentence, so an
+// answer that echoes the request — a 422, a 428 — loses the token, and only
+// it: a confirm link's long signature stays as the app wrote it.
+func TestAnAnswerNeverHandsTheTokenOnInItsBody(t *testing.T) {
+	token := "chalet_dt_" + strings.Repeat("7kQ2mVx9Rt", 5)[:44]
+	link := "https://chalet.example/1/agent_confirmations/new?confirmation=eyJfcmFpbHMiOnsiZGF0YSI6IjAxOGNm--3f2a9c0b"
+	for _, status := range []int{http.StatusUnprocessableEntity, http.StatusPreconditionRequired} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(status)
+			fmt.Fprintf(w, `{"error":"refused","echo":%q,"confirm_url":%q}`, r.Header.Get("Authorization"), link)
+		}))
+		resp, err := (&Client{BaseURL: server.URL, Token: token}).Do(context.Background(), "POST", "/todos", nil, nil, nil)
+		server.Close()
+		if err != nil {
+			t.Fatalf("%d: %v", status, err)
+		}
+		body := string(resp.Body)
+		if strings.Contains(body, token) {
+			t.Errorf("%d: the token reached the body: %s", status, body)
+		}
+		if !strings.Contains(body, "Bearer [redacted]") || !strings.Contains(body, link) {
+			t.Errorf("%d: the body lost more than the token: %s", status, body)
+		}
 	}
 }
 

@@ -107,7 +107,24 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 		req.Header.Set("User-Agent", c.UserAgent)
 	}
 
-	return c.send(c.httpClient(), req)
+	resp, err := c.send(c.httpClient(), req)
+	if err != nil {
+		return nil, err
+	}
+	resp.Body = c.withoutToken(resp.Body)
+	return resp, nil
+}
+
+// withoutToken cuts the request's own token out of an answer before anything
+// reads it: a 422 that echoes the request, or any answer that is not the app's
+// own, would otherwise hand it on in a hint or a confirm sentence. Only this
+// token is cut, by its exact bytes, so the app's own words stay whole — a
+// confirm link or an sgid, which a scrub by shape would break.
+func (c *Client) withoutToken(body []byte) []byte {
+	if c.Token == "" {
+		return body
+	}
+	return bytes.ReplaceAll(body, []byte(c.Token), []byte("[redacted]"))
 }
 
 // Fetch reads a file the app links to: a preview_url or a download_url from
