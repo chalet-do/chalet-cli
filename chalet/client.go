@@ -15,6 +15,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/basecamp/mcp/auth/upstream"
 )
 
 // Client is one account in one Chalet. Paths are account-relative ("/my");
@@ -40,13 +42,15 @@ func (r *Response) OK() bool {
 }
 
 // Error is the app's own sentence for a refusal — every refusal carries a
-// JSON body — or the status text when there is none.
+// JSON body — or the status text when there is none. The sentence is scrubbed
+// (upstream.ScrubDescription): an answer that is not the app's own could quote
+// the request's token back, and this text reaches the agent.
 func (r *Response) Error() string {
 	var refusal struct {
 		Error string `json:"error"`
 	}
 	if json.Unmarshal(r.Body, &refusal) == nil && refusal.Error != "" {
-		return fmt.Sprintf("%d %s", r.Status, refusal.Error)
+		return fmt.Sprintf("%d %s", r.Status, upstream.ScrubDescription(refusal.Error))
 	}
 	return fmt.Sprintf("%d %s", r.Status, http.StatusText(r.Status))
 }
@@ -143,16 +147,32 @@ func (c *Client) Fetch(ctx context.Context, link string) (*Response, error) {
 func (c *Client) send(client *http.Client, req *http.Request) (*Response, error) {
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("could not reach Chalet at %s: %w", c.BaseURL, err)
+		return nil, unanswered{"could not reach Chalet at " + c.BaseURL, err}
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if err != nil {
-		return nil, err
+		return nil, unanswered{"could not read the answer of Chalet at " + c.BaseURL, err}
 	}
 	return &Response{Status: resp.StatusCode, Header: resp.Header, Body: data}, nil
 }
+
+// unanswered is a request with no answer it could read. A transport's or a
+// body's error can quote what the other end sent — a status or header line, a
+// trailer — and with it the request's own token, so its text is scrubbed and
+// bounded (upstream.ScrubDescription) before any sink sees it, the agent
+// included. errors.As and errors.Is still reach the cause.
+type unanswered struct {
+	what  string
+	cause error
+}
+
+func (e unanswered) Error() string {
+	return e.what + ": " + upstream.ScrubDescription(e.cause.Error())
+}
+
+func (e unanswered) Unwrap() error { return e.cause }
 
 func (c *Client) url(path string, query url.Values) string {
 	u := strings.TrimRight(c.BaseURL, "/")

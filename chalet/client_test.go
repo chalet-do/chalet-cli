@@ -8,7 +8,31 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/basecamp/mcp/auth/upstream/upstreamtest"
 )
+
+// An answer that is not the app's own can quote the request's token back — in
+// a status or header line, a trailer, a refusal's sentence — and the text the
+// client hands on reaches the agent: none of it may carry the token.
+func TestAHostileAnswerNeverHandsTheTokenOn(t *testing.T) {
+	token := "chalet_dt_" + strings.Repeat("7kQ2mVx9Rt", 5)[:44]
+	for _, kind := range upstreamtest.Kinds {
+		t.Run(string(kind), func(t *testing.T) {
+			server := httptest.NewServer(upstreamtest.Handler(kind))
+			defer server.Close()
+
+			resp, err := (&Client{BaseURL: server.URL, Token: token}).Do(context.Background(), "GET", "/my", nil, nil, nil)
+			text := ""
+			if err != nil {
+				text = err.Error()
+			} else {
+				text = resp.Error()
+			}
+			upstreamtest.AssertClean(t, string(kind), text, token, upstreamtest.Planted)
+		})
+	}
+}
 
 func TestHTTPOnlyForThisMachine(t *testing.T) {
 	for _, ok := range []string{"https://chalet.example", "http://localhost:3007", "http://127.0.0.1:3007"} {
