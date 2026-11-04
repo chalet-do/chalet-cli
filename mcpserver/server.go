@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/basecamp/mcp/gateway"
 	"github.com/basecamp/mcp/result"
@@ -34,8 +35,8 @@ type Config struct {
 	// the server rather than serving less than asked for.
 	Domains []string
 	// Account is the account this server reaches, as "name (url)". It goes
-	// in front of the rules, so that Claude can tell this server from one
-	// for another account (a profile each). Empty leaves it out.
+	// after the rules' first paragraph, so that Claude can tell this server
+	// from one for another account (a profile each). Empty leaves it out.
 	Account string
 	// SignIn is the hint of an unauthorized answer: how the person signs in
 	// again. Empty says to make a new token and run `chalet auth login`.
@@ -63,9 +64,14 @@ func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger 
 		return nil, err
 	}
 	// A copy: Narrow hands back the catalog itself when it keeps everything.
+	// The account goes after the rules' first paragraph, not in front: some
+	// clients read only the first 512 characters, and that paragraph must be
+	// whole in them, however long the account's name.
 	if cfg.Account != "" {
 		named := *narrowed
-		named.Rules = "This server reaches one Chalet account: " + cfg.Account + ". If the owner connected other Chalet accounts as other servers, use the one the request is about, and ask when it is unclear.\n\n" + named.Rules
+		opening, rest, _ := strings.Cut(named.Rules, "\n\n")
+		account := "This server reaches one Chalet account: " + cfg.Account + ". If the owner connected other Chalet accounts as other servers, use the one the request is about, and ask when it is unclear."
+		named.Rules = strings.TrimSpace(opening + "\n\n" + account + "\n\n" + rest)
 		narrowed = &named
 	}
 	domains, err := narrowed.GatewayDomains()
