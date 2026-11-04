@@ -82,9 +82,7 @@ func diagnose(ctx context.Context) []check {
 	} else {
 		add("profile", "ok", fmt.Sprintf("%s: %s, account %s", p.Name, p.BaseURL, p.Account), "")
 
-		anyAccount := *client
-		anyAccount.Account = ""
-		if who, err := whoIs(ctx, &anyAccount); err != nil {
+		if who, err := client.Identity(ctx); err != nil {
 			add("token", "problem", err.Error(), "Make a new token in Chalet's Settings › Access tokens, and run `chalet auth login`.")
 		} else {
 			add("token", "ok", "signed in as "+who.EmailAddress, "")

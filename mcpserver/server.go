@@ -34,10 +34,10 @@ type Config struct {
 	// Domains narrows to these domains, empty for all. An unknown name stops
 	// the server rather than serving less than asked for.
 	Domains []string
-	// Account is the account this server reaches, as "name (url)". It goes
-	// after the rules' first paragraph, so that Claude can tell this server
-	// from one for another account (a profile each). Empty leaves it out.
-	Account string
+	// Account is the account this server reaches. Its name and URL go after
+	// the rules' first paragraph, so that Claude can tell this server from
+	// one for another account (a profile each). None leaves them out.
+	Account chalet.Account
 	// SignIn is the hint of an unauthorized answer: how the person signs in
 	// again. Empty says to make a new token and run `chalet auth login`.
 	SignIn string
@@ -67,10 +67,10 @@ func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger 
 	// The account goes after the rules' first paragraph, not in front: some
 	// clients read only the first 512 characters, and that paragraph must be
 	// whole in them, however long the account's name.
-	if cfg.Account != "" {
+	if cfg.Account.Name != "" {
 		named := *narrowed
 		opening, rest, _ := strings.Cut(named.Rules, "\n\n")
-		account := "This server reaches one Chalet account: " + cfg.Account + ". If the owner connected other Chalet accounts as other servers, use the one the request is about, and ask when it is unclear."
+		account := "This server reaches one Chalet account: " + cfg.Account.Name + " (" + cfg.Account.URL + "). If the owner connected other Chalet accounts as other servers, use the one the request is about, and ask when it is unclear."
 		named.Rules = strings.TrimSpace(opening + "\n\n" + account + "\n\n" + rest)
 		narrowed = &named
 	}

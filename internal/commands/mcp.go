@@ -51,7 +51,7 @@ func mcpCommand() *cobra.Command {
 
 			// Without the name the server still serves; the tools answer
 			// for themselves if the token no longer works.
-			if cfg.Account, err = accountName(cmd.Context(), client); err != nil {
+			if cfg.Account, err = account(cmd.Context(), client); err != nil {
 				logger.Warn("could not name the account", "error", err)
 			}
 
@@ -75,20 +75,17 @@ func mcpCommand() *cobra.Command {
 	return cmd
 }
 
-// accountName is the profile's account as "name (url)", as the server names
-// it to Claude. Asked without the account in the path, like auth status: the
+// account is the profile's account, as the server names it to Claude: the
 // identity answers with every account its token reaches.
-func accountName(ctx context.Context, client *chalet.Client) (string, error) {
-	unscoped := *client
-	unscoped.Account = ""
-	who, err := whoIs(ctx, &unscoped)
+func account(ctx context.Context, client *chalet.Client) (chalet.Account, error) {
+	who, err := client.Identity(ctx)
 	if err != nil {
-		return "", err
+		return chalet.Account{}, err
 	}
-	for _, account := range who.Accounts {
-		if fmt.Sprint(account.ID) == client.Account {
-			return fmt.Sprintf("%s (%s)", account.Name, account.URL), nil
+	for _, a := range who.Accounts {
+		if fmt.Sprint(a.ID) == client.Account {
+			return a, nil
 		}
 	}
-	return "", fmt.Errorf("the token does not reach account %s", client.Account)
+	return chalet.Account{}, fmt.Errorf("the token does not reach account %s", client.Account)
 }
