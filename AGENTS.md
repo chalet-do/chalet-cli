@@ -68,6 +68,11 @@ uses belongs here.
     go test ./...
     go install ./cmd/chalet
 
+Where a binary in the tree is wanted, build it into `bin/`, which git ignores.
+`go build -o chalet` would write it into the `chalet` package's folder.
+
+    go build -o bin/chalet ./cmd/chalet
+
 Against the app running locally (`http://` is accepted for localhost only):
 
     chalet auth login --profile dev --url http://localhost:3007 --account 1
