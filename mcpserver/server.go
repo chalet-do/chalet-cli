@@ -142,16 +142,21 @@ func isImage(c mcp.Content) bool {
 
 // The gateway builds its server without instructions, so the rules are put
 // into the handshake on the way out — both the classic initialize and the
-// 2026-07-28 discovery.
+// 2026-07-28 discovery. A refused handshake, such as a second initialize,
+// comes back as a nil result.
 func instructions(rules string) mcp.Middleware {
 	return func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 			result, err := next(ctx, method, req)
 			switch r := result.(type) {
 			case *mcp.InitializeResult:
-				r.Instructions = rules
+				if r != nil {
+					r.Instructions = rules
+				}
 			case *mcp.DiscoverResult:
-				r.Instructions = rules
+				if r != nil {
+					r.Instructions = rules
+				}
 			}
 			return result, err
 		}

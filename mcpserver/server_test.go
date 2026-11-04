@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/basecamp/mcp/mcptest"
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/chalet-do/chalet-cli/chalet"
@@ -348,6 +350,54 @@ func TestAnUnknownToolLeavesTheServerStanding(t *testing.T) {
 	}
 	if text, isError := mcptest.CallText(t, session, "chalet_my", map[string]any{"action": "work"}); isError || !strings.Contains(text, "Call Anna") {
 		t.Fatalf("work after it = %q (error %v)", text, isError)
+	}
+}
+
+// A second initialize is the client's mistake too: the SDK refuses it with no
+// result for the middleware, and the server answers what comes next.
+func TestASecondInitializeLeavesTheServerStanding(t *testing.T) {
+	server, err := New(recordedCatalog(t), &chalet.Client{BaseURL: "http://localhost:1", Account: "1"}, nil, Config{}, "test", slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverSide, clientSide := mcp.NewInMemoryTransports()
+	go server.Run(t.Context(), serverSide)
+	conn, err := clientSide.Connect(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { conn.Close() })
+
+	// ask sends one JSON-RPC request as it goes on the wire, and reads the answer.
+	ask := func(message string) *jsonrpc.Response {
+		t.Helper()
+		request, err := jsonrpc.DecodeMessage([]byte(message))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := conn.Write(t.Context(), request); err != nil {
+			t.Fatal(err)
+		}
+		for {
+			answer, err := conn.Read(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if response, ok := answer.(*jsonrpc.Response); ok {
+				return response
+			}
+		}
+	}
+	initialize := `{"jsonrpc":"2.0","id":%d,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`
+
+	if first := ask(fmt.Sprintf(initialize, 1)); first.Error != nil || !strings.Contains(string(first.Result), "Never guess one") {
+		t.Fatalf("initialize = %s, %v", first.Result, first.Error)
+	}
+	if second := ask(fmt.Sprintf(initialize, 2)); second.Error == nil || !strings.Contains(second.Error.Error(), "duplicate") {
+		t.Fatalf("a second initialize = %s, %v", second.Result, second.Error)
+	}
+	if ping := ask(`{"jsonrpc":"2.0","id":3,"method":"ping"}`); ping.Error != nil {
+		t.Fatalf("ping after it = %v", ping.Error)
 	}
 }
 
