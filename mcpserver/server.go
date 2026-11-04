@@ -12,10 +12,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"strings"
 
 	"github.com/basecamp/mcp/gateway"
 	"github.com/basecamp/mcp/result"
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/chalet-do/chalet-cli/chalet"
@@ -87,7 +89,7 @@ func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger 
 	}
 
 	server := gw.BuildMCPServer(&mcp.Implementation{Name: "chalet-cli", Title: "Chalet", Version: version}, logger)
-	server.AddReceivingMiddleware(instructions(narrowed.Rules), oneErrorShape, capped)
+	server.AddReceivingMiddleware(recovered(logger), instructions(narrowed.Rules), oneErrorShape, capped)
 
 	// Whatever the domains: a picture can sit in the words of any of them.
 	addPictureTool(server, h)
@@ -106,6 +108,24 @@ func (s *Server) Run(ctx context.Context, transport mcp.Transport) error {
 		return err
 	}
 	return session.Wait()
+}
+
+// recovered answers a call that panicked with an internal error, and logs the
+// panic and its stack, never the request and so never a token. Outermost, so
+// that it catches a panic in every middleware too: one bad call must stop
+// neither `chalet mcp` nor a server that serves everyone.
+func recovered(logger *slog.Logger) mcp.Middleware {
+	return func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, req mcp.Request) (result mcp.Result, err error) {
+			defer func() {
+				if v := recover(); v != nil {
+					logger.Error("a call panicked", "method", method, "panic", fmt.Sprint(v), "stack", string(debug.Stack()))
+					result, err = nil, &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: "internal error"}
+				}
+			}()
+			return next(ctx, method, req)
+		}
+	}
 }
 
 // The gateway refuses some calls itself, in plain words — an unknown action,

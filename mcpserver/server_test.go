@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -361,6 +362,33 @@ func TestAnUnknownToolLeavesTheServerStanding(t *testing.T) {
 	}
 	if text, isError := mcptest.CallText(t, session, "chalet_my", map[string]any{"action": "work"}); isError || !strings.Contains(text, "Call Anna") {
 		t.Fatalf("work after it = %q (error %v)", text, isError)
+	}
+}
+
+// A call that panics answers an internal error, and the server answers the
+// next one: one bad call stops neither chalet mcp nor a server for everyone.
+func TestAPanicIsOneCallsInternalError(t *testing.T) {
+	httpServer := httptest.NewServer(&fakeApp{})
+	t.Cleanup(httpServer.Close)
+	var log bytes.Buffer
+	client := &chalet.Client{BaseURL: httpServer.URL, Account: "1", Token: "chalet_pat_test"}
+	server, err := New(recordedCatalog(t), client, nil, Config{}, "test", slog.New(slog.NewTextHandler(&log, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mcp.AddTool(server.MCP, &mcp.Tool{Name: "boom"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, any, error) {
+		panic("boom")
+	})
+	session := mcptest.Connect(t, server.MCP)
+
+	if _, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "boom", Arguments: map[string]any{}}); err == nil || !strings.Contains(err.Error(), "internal error") {
+		t.Fatalf("the panicking call = %v", err)
+	}
+	if text, isError := mcptest.CallText(t, session, "chalet_my", map[string]any{"action": "work"}); isError || !strings.Contains(text, "Call Anna") {
+		t.Errorf("the next call = %q (error %v)", text, isError)
+	}
+	if !strings.Contains(log.String(), `msg="a call panicked" method=tools/call panic=boom`) {
+		t.Errorf("log = %s", log.String())
 	}
 }
 
