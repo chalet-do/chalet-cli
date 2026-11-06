@@ -77,15 +77,18 @@ func diagnose(ctx context.Context) []check {
 		checks = append(checks, check{Name: name, Status: status, Detail: detail, Fix: fix})
 	}
 
-	if p, client, err := client(); err != nil {
+	if p, client, err := client(ctx); err != nil {
 		add("profile", "problem", err.Error(), "Run `chalet auth login`.")
 	} else {
 		add("profile", "ok", fmt.Sprintf("%s: %s, account %s", p.Name, p.BaseURL, p.Account), "")
 
-		if who, err := client.Identity(ctx); err != nil {
+		switch who, err := client.Identity(ctx); {
+		case err != nil && isAgent(client):
+			add("token", "problem", err.Error(), "Connect the agent again on its page in Chalet's Settings › AI connections, and run `chalet auth login --agent`.")
+		case err != nil:
 			add("token", "problem", err.Error(), "Make a new token in Chalet's Settings › Access tokens, and run `chalet auth login`.")
-		} else {
-			add("token", "ok", "signed in as "+who.EmailAddress, "")
+		default:
+			add("token", "ok", "signed in as "+signedInAs(who), "")
 		}
 
 		if catalog, err := mcpserver.LoadCatalog(ctx, client); err != nil {

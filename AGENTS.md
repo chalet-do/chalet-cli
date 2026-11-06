@@ -59,6 +59,14 @@ only HTTP uses belongs here.
   428 is not an error: it stays the confirmation (`handOver`).
 - Never retry a write. Never follow a redirect. Never print, log or pass the
   token as an argument.
+- A profile signs in with a personal token, or as an agent with its
+  connection's client ID and secret (`chalet auth login --agent`, or
+  `CHALET_CLIENT_ID` and `CHALET_CLIENT_SECRET`). The secret buys a token of
+  an hour at `/oauth/token` (client credentials, in the body, no redirect
+  followed), and `chalet.Client.Tokens` buys the next five minutes before the
+  hour ends (`signedIn`). The secret goes nowhere else. A refused trade is the
+  call's answer, a 401 in the endpoint's code (`Client.bearer`), so an agent
+  branches on it as on any refused sign-in.
 - stdout belongs to the MCP wire in `chalet mcp`; log to stderr.
 - The CLI and MCP libraries in `go.mod` are pinned to commits; move them
   deliberately, with the tests as the gate.

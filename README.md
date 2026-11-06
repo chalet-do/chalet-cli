@@ -89,6 +89,24 @@ In Claude Desktop, add a second entry beside `chalet` with
 `"args": ["mcp", "--profile", "work"]`. Each server tells Claude which account
 it reaches, and Claude asks when a request does not say.
 
+## Sign in as an agent
+
+An agent is a member of a Chalet account in its own name, and acts for the
+person who added it. On the agent's page in **Settings › AI connections**,
+**Connect** shows a client ID and a secret, once. Sign in with both, the ID
+first:
+
+    chalet auth login --agent --profile claude
+    claude mcp add --scope user chalet-claude -- chalet mcp --profile claude
+
+chalet keeps both in the keychain, trades them with Chalet for a token of an
+hour, and trades them again before the hour ends. A runtime with no keychain,
+such as a cloud environment, sets `CHALET_CLIENT_ID` and
+`CHALET_CLIENT_SECRET` instead of signing in. chalet then reaches
+https://chalet.do as the agent, whatever profiles there are.
+
+**Disconnect** on the agent's page ends the secret and every token it bought.
+
 ## What Claude can do
 
 - Claude reaches only what you can reach in Chalet.

@@ -231,7 +231,7 @@ func TestTrashHandsTheOwnerTheConfirmPage(t *testing.T) {
 	session, app, opened := serve(t, Config{Writes: true}, nil)
 
 	text, isError := mcptest.CallText(t, session, "chalet_destructive", map[string]any{"action": "trash", "params": map[string]any{"recording_id": "todo-1"}})
-	if isError || !strings.Contains(text, "Not done yet: Trash “Call Anna” in Website?") || !strings.Contains(text, "open in the owner's browser: "+confirmURL) {
+	if isError || !strings.Contains(text, "Not done yet: Trash “Call Anna” in Website?") || !strings.Contains(text, "open in the browser of the person you act for: "+confirmURL) {
 		t.Fatalf("trash = %q (error %v)", text, isError)
 	}
 	if len(*opened) != 1 || (*opened)[0] != confirmURL {
@@ -246,7 +246,7 @@ func TestTheLinkSurvivesNoBrowser(t *testing.T) {
 	session, _, _ := serve(t, Config{Writes: true}, errors.New("no screen"))
 
 	text, isError := mcptest.CallText(t, session, "chalet_destructive", map[string]any{"action": "trash", "params": map[string]any{"recording_id": "todo-1"}})
-	if isError || !strings.Contains(text, "Give the owner the confirm page: "+confirmURL) {
+	if isError || !strings.Contains(text, "Give the person you act for the confirm page: "+confirmURL) {
 		t.Fatalf("trash = %q (error %v)", text, isError)
 	}
 }
@@ -266,7 +266,7 @@ func TestAServerForOthers(t *testing.T) {
 	session := mcptest.Connect(t, server.MCP)
 
 	text, isError := mcptest.CallText(t, session, "chalet_destructive", map[string]any{"action": "trash", "params": map[string]any{"recording_id": "todo-1"}})
-	if isError || !strings.Contains(text, "Not done yet: Trash “Call Anna” in Website? Give the owner the confirm page: "+confirmURL) {
+	if isError || !strings.Contains(text, "Not done yet: Trash “Call Anna” in Website? Give the person you act for the confirm page: "+confirmURL) {
 		t.Fatalf("trash = %q (error %v)", text, isError)
 	}
 

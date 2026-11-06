@@ -1,6 +1,7 @@
 // Package chalet speaks to the Chalet JSON API: the same URLs as the pages,
 // asked for JSON, with a token as the bearer header — a personal access
-// token, or the short-lived one a server trades a person's token for.
+// token, the short-lived one a server trades a person's token for, or an
+// agent's, which its connection buys an hour at a time.
 package chalet
 
 import (
@@ -17,14 +18,19 @@ import (
 	"time"
 
 	"github.com/basecamp/mcp/auth/upstream"
+	"golang.org/x/oauth2"
 )
 
 // Client is one account in one Chalet. Paths are account-relative ("/my");
 // the client puts the account prefix in front, as the browser's URLs carry it.
+// The token is Token, or, when Tokens is set, the one Tokens holds at each
+// request: an agent's connection buys a token of an hour, and buys the next
+// before the hour ends.
 type Client struct {
 	BaseURL   string
 	Account   string
 	Token     string
+	Tokens    oauth2.TokenSource
 	UserAgent string
 	HTTP      *http.Client
 }
@@ -82,6 +88,11 @@ func CheckBaseURL(raw string) error {
 // and went out as a JSON null on every call without fields — a key the app
 // refuses, so every read failed.
 func (c *Client) Do(ctx context.Context, method, path string, query url.Values, body map[string]any, header http.Header) (*Response, error) {
+	token, refused, err := c.bearer()
+	if refused != nil || err != nil {
+		return refused, err
+	}
+
 	var payload io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -98,7 +109,7 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 	for name, values := range header {
 		req.Header[name] = values
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -111,8 +122,34 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 	if err != nil {
 		return nil, err
 	}
-	resp.Body = c.withoutToken(resp.Body)
+	resp.Body = withoutToken(resp.Body, token)
 	return resp, nil
+}
+
+// bearer is the token for the next request. When Tokens cannot buy one, the
+// token endpoint's no is the request's answer, so that a connection that is
+// gone reads as any refused sign-in does: a 401, whatever 4xx the endpoint
+// gave (OAuth answers a secret sent in the body with a 400), save its 429.
+// Its words are the error code alone, scrubbed: an answer that is not the
+// app's own could quote the secret back.
+func (c *Client) bearer() (string, *Response, error) {
+	if c.Tokens == nil {
+		return c.Token, nil, nil
+	}
+	token, err := c.Tokens.Token()
+	var refused *oauth2.RetrieveError
+	switch {
+	case errors.As(err, &refused):
+		status := refused.Response.StatusCode
+		if status >= 400 && status < 500 && status != http.StatusTooManyRequests {
+			status = http.StatusUnauthorized
+		}
+		body, _ := json.Marshal(map[string]string{"error": upstream.ScrubDescription(refused.ErrorCode)})
+		return "", &Response{Status: status, Body: body}, nil
+	case err != nil:
+		return "", nil, unanswered{"could not get a token from Chalet at " + c.BaseURL, err}
+	}
+	return token.AccessToken, nil, nil
 }
 
 // withoutToken cuts the request's own token out of an answer before anything
@@ -120,11 +157,11 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 // own, would otherwise hand it on in a hint or a confirm sentence. Only this
 // token is cut, by its exact bytes, so the app's own words stay whole — a
 // confirm link or an sgid, which a scrub by shape would break.
-func (c *Client) withoutToken(body []byte) []byte {
-	if c.Token == "" {
+func withoutToken(body []byte, token string) []byte {
+	if token == "" {
 		return body
 	}
-	return bytes.ReplaceAll(body, []byte(c.Token), []byte("[redacted]"))
+	return bytes.ReplaceAll(body, []byte(token), []byte("[redacted]"))
 }
 
 // Fetch reads a file the app links to: a preview_url or a download_url from
@@ -141,11 +178,16 @@ func (c *Client) Fetch(ctx context.Context, link string) (*Response, error) {
 		return nil, fmt.Errorf("%q is not a link into Chalet at %s", link, c.BaseURL)
 	}
 
+	token, refused, err := c.bearer()
+	if refused != nil || err != nil {
+		return refused, err
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	if c.UserAgent != "" {
 		req.Header.Set("User-Agent", c.UserAgent)
 	}

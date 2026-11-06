@@ -7,10 +7,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/basecamp/mcp/auth/upstream/upstreamtest"
+	"golang.org/x/oauth2"
 )
 
 // An answer that is not the app's own can quote the request's token back — in
@@ -59,6 +61,53 @@ func TestAnAnswerNeverHandsTheTokenOnInItsBody(t *testing.T) {
 			t.Errorf("%d: the body lost more than the token: %s", status, body)
 		}
 	}
+}
+
+// An agent's token is the one its source holds at each request. When the
+// source cannot buy one, nothing is sent: the token endpoint's no is the
+// answer, a 401 for any refusal but its 429, in the endpoint's code alone.
+func TestATokenFromItsSource(t *testing.T) {
+	var sent []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sent = append(sent, r.Header.Get("Authorization"))
+		fmt.Fprintf(w, `{"echo":%q}`, r.Header.Get("Authorization"))
+	}))
+	defer server.Close()
+
+	client := &Client{BaseURL: server.URL, Account: "2", Tokens: source{token: "chalet_dt_" + strings.Repeat("a", 40)}}
+	resp, err := client.Do(context.Background(), "GET", "/my", nil, nil, nil)
+	if err != nil || sent[0] != "Bearer chalet_dt_"+strings.Repeat("a", 40) || string(resp.Body) != `{"echo":"Bearer [redacted]"}` {
+		t.Fatalf("sent %v, got %v, %v", sent, resp, err)
+	}
+
+	for given, want := range map[int]int{http.StatusBadRequest: http.StatusUnauthorized, http.StatusTooManyRequests: http.StatusTooManyRequests, http.StatusServiceUnavailable: http.StatusServiceUnavailable} {
+		client.Tokens = source{err: &oauth2.RetrieveError{Response: &http.Response{StatusCode: given}, Body: []byte("chalet_cs_secret"), ErrorCode: "invalid_client"}}
+		resp, err := client.Do(context.Background(), "GET", "/my", nil, nil, nil)
+		if err != nil || resp.Status != want || resp.Error() != fmt.Sprintf("%d invalid_client", want) {
+			t.Errorf("a %d from the token endpoint = %v, %v", given, resp, err)
+		}
+	}
+
+	client.Tokens = source{err: &url.Error{Op: "Post", URL: server.URL, Err: errors.New("connection refused")}}
+	var unreachable *url.Error
+	if _, err := client.Do(context.Background(), "GET", "/my", nil, nil, nil); !errors.As(err, &unreachable) {
+		t.Errorf("no answer from the token endpoint = %v", err)
+	}
+	if len(sent) != 1 {
+		t.Errorf("a request went without a token: %v", sent)
+	}
+}
+
+type source struct {
+	token string
+	err   error
+}
+
+func (s source) Token() (*oauth2.Token, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &oauth2.Token{AccessToken: s.token}, nil
 }
 
 func TestHTTPOnlyForThisMachine(t *testing.T) {

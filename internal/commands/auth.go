@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,7 +16,7 @@ import (
 )
 
 func authCommand() *cobra.Command {
-	auth := &cobra.Command{Use: "auth", Short: "Sign in to Chalet with a personal access token"}
+	auth := &cobra.Command{Use: "auth", Short: "Sign in to Chalet with a personal access token, or as an agent"}
 	auth.AddCommand(loginCommand(), statusCommand(), logoutCommand())
 	return auth
 }
@@ -23,13 +24,20 @@ func authCommand() *cobra.Command {
 func loginCommand() *cobra.Command {
 	var baseURL string
 	var account int
+	var agent bool
 
 	cmd := &cobra.Command{
 		Use:   "login",
-		Short: "Sign in with a token made in Chalet's settings",
+		Short: "Sign in with a token made in Chalet's settings, or as an agent",
 		Long: "Paste a token from Settings › Access tokens in Chalet. It is read from\n" +
 			"standard input, never from an argument, and kept in your system's keychain.\n\n" +
-			"  chalet auth login",
+			"  chalet auth login\n\n" +
+			"With --agent, sign in as an agent with a connection from its page in\n" +
+			"Settings › AI connections: the client ID, then the secret, each on its own\n" +
+			"line. chalet trades them for a token of an hour, and for the next before\n" +
+			"the hour ends. A runtime with no keychain sets CHALET_CLIENT_ID and\n" +
+			"CHALET_CLIENT_SECRET instead, and signs in to " + config.DefaultURL + ".\n\n" +
+			"  chalet auth login --agent --profile claude",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			name := profileFlag
@@ -40,12 +48,12 @@ func loginCommand() *cobra.Command {
 				return err
 			}
 
-			token, err := readToken(cmd.InOrStdin(), cmd.ErrOrStderr())
+			creds, err := readCredentials(cmd.InOrStdin(), cmd.ErrOrStderr(), agent)
 			if err != nil {
 				return err
 			}
 
-			who, err := (&chalet.Client{BaseURL: baseURL, Token: token, UserAgent: "chalet-cli/" + Version}).Identity(cmd.Context())
+			who, err := signedIn(cmd.Context(), baseURL, "", creds).Identity(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -65,7 +73,7 @@ func loginCommand() *cobra.Command {
 			}
 
 			picked := who.Accounts[chosen]
-			if err := config.Save(&config.Profile{Name: name, BaseURL: baseURL, Account: fmt.Sprint(picked.ID)}, token); err != nil {
+			if err := config.Save(&config.Profile{Name: name, BaseURL: baseURL, Account: fmt.Sprint(picked.ID)}, creds); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Signed in to %s as %s (%s). Profile: %s.\n", picked.Name, picked.User.Name, picked.User.Role, name)
@@ -73,8 +81,9 @@ func loginCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&baseURL, "url", "https://chalet.do", "where Chalet runs")
+	cmd.Flags().StringVar(&baseURL, "url", config.DefaultURL, "where Chalet runs")
 	cmd.Flags().IntVar(&account, "account", 0, "the account's number, as in /1/ in Chalet's URLs (needed when the token reaches several)")
+	cmd.Flags().BoolVar(&agent, "agent", false, "sign in as an agent, with its connection's client ID and secret")
 	return cmd
 }
 
@@ -84,7 +93,7 @@ func statusCommand() *cobra.Command {
 		Short: "Show who chalet is signed in as",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			p, client, err := client()
+			p, client, err := client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -92,7 +101,7 @@ func statusCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Profile %s: %s, account %s, as %s.\n", p.Name, p.BaseURL, p.Account, who.EmailAddress)
+			fmt.Fprintf(cmd.OutOrStdout(), "Profile %s: %s, account %s, as %s.\n", p.Name, p.BaseURL, p.Account, signedInAs(who))
 			warnAboutKeychain(cmd)
 			return nil
 		},
@@ -109,13 +118,29 @@ func logoutCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			creds, _ := p.Credentials()
 			if err := p.Forget(); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Forgot the token for profile %s. Revoke it in Chalet too: Settings › Access tokens.\n", p.Name)
+			if creds.ClientID != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "Forgot the connection for profile %s. Disconnect it in Chalet too, on the agent's page in Settings › AI connections.\n", p.Name)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Forgot the token for profile %s. Revoke it in Chalet too: Settings › Access tokens.\n", p.Name)
+			}
 			return nil
 		},
 	}
+}
+
+// signedInAs names whom the token signs in as: a person by their address; an
+// agent, whose address is a hidden one, by its name and its sponsor's.
+func signedInAs(who *chalet.Identity) string {
+	for _, a := range who.Accounts {
+		if a.User.Role == "agent" {
+			return a.User.Name + ", agent of " + a.User.Sponsor.Name
+		}
+	}
+	return who.EmailAddress
 }
 
 func warnAboutKeychain(cmd *cobra.Command) {
@@ -124,28 +149,50 @@ func warnAboutKeychain(cmd *cobra.Command) {
 	}
 }
 
-// From a terminal the token is typed blind; from a pipe it is the first line.
-func readToken(in io.Reader, prompt io.Writer) (string, error) {
-	var token string
-	if file, ok := in.(*os.File); ok && term.IsTerminal(int(file.Fd())) {
-		fmt.Fprint(prompt, "Paste your Chalet token: ")
-		data, err := term.ReadPassword(int(file.Fd()))
-		fmt.Fprintln(prompt)
-		if err != nil {
-			return "", err
+// readCredentials reads a token, or for an agent its connection's client ID
+// and then its secret.
+func readCredentials(in io.Reader, prompt io.Writer, agent bool) (config.Credentials, error) {
+	read := lines(in, prompt)
+	if !agent {
+		token, err := read("Paste your Chalet token: ", true)
+		if err == nil && !strings.HasPrefix(token, "chalet_pat_") {
+			err = errors.New("that is not a Chalet token: they start with chalet_pat_")
 		}
-		token = string(data)
-	} else {
-		line, err := bufio.NewReader(in).ReadString('\n')
-		if err != nil && err != io.EOF {
-			return "", err
-		}
-		token = line
+		return config.Credentials{Token: token}, err
 	}
 
-	token = strings.TrimSpace(token)
-	if !strings.HasPrefix(token, "chalet_pat_") {
-		return "", fmt.Errorf("that is not a Chalet token: they start with chalet_pat_")
+	id, err := read("Client ID: ", false)
+	if err != nil {
+		return config.Credentials{}, err
 	}
-	return token, nil
+	secret, err := read("Client secret: ", true)
+	if err == nil && (id == "" || !strings.HasPrefix(secret, "chalet_cs_")) {
+		err = errors.New("give the connection's client ID, then its secret, which starts with chalet_cs_")
+	}
+	return config.Credentials{ClientID: id, ClientSecret: secret}, err
+}
+
+// lines reads one line at a time: from a terminal after its prompt, a secret
+// typed blind; from a pipe, the next line. Every line comes through the one
+// buffered reader, which may already hold the next.
+func lines(in io.Reader, prompt io.Writer) func(label string, blind bool) (string, error) {
+	buffered := bufio.NewReader(in)
+	file, _ := in.(*os.File)
+	terminal := file != nil && term.IsTerminal(int(file.Fd()))
+
+	return func(label string, blind bool) (string, error) {
+		if terminal {
+			fmt.Fprint(prompt, label)
+		}
+		if terminal && blind {
+			data, err := term.ReadPassword(int(file.Fd()))
+			fmt.Fprintln(prompt)
+			return strings.TrimSpace(string(data)), err
+		}
+		line, err := buffered.ReadString('\n')
+		if err == io.EOF {
+			err = nil
+		}
+		return strings.TrimSpace(line), err
+	}
 }
