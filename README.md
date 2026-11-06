@@ -79,7 +79,8 @@ path stays the same after an upgrade. Then quit and reopen Claude Desktop.
 
 ## More than one account
 
-Connect each account as its own profile, with a token made in that account:
+Connect each account as its own profile. One token reaches every account you
+are in, so paste the same token each time:
 
     chalet auth login --profile work --account 2
     claude mcp add --scope user chalet-work -- chalet mcp --profile work
