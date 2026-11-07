@@ -128,10 +128,11 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 
 // bearer is the token for the next request. When Tokens cannot buy one, the
 // token endpoint's no is the request's answer, so that a connection that is
-// gone reads as any refused sign-in does: a 401, whatever 4xx the endpoint
-// gave (OAuth answers a secret sent in the body with a 400), save its 429.
-// Its words are the error code alone, scrubbed: an answer that is not the
-// app's own could quote the secret back.
+// gone reads as any refused sign-in does: a 401, whatever the endpoint gave —
+// OAuth answers a secret sent in the body with a 400, an error can come in a
+// 200, a redirect is not followed — save its 429 and its 5xx, which say to
+// try again. Its words are the error code alone, scrubbed: an answer that is
+// not the app's own could quote the secret back.
 func (c *Client) bearer() (string, *Response, error) {
 	if c.Tokens == nil {
 		return c.Token, nil, nil
@@ -141,7 +142,7 @@ func (c *Client) bearer() (string, *Response, error) {
 	switch {
 	case errors.As(err, &refused):
 		status := refused.Response.StatusCode
-		if status >= 400 && status < 500 && status != http.StatusTooManyRequests {
+		if status != http.StatusTooManyRequests && status < 500 {
 			status = http.StatusUnauthorized
 		}
 		body, _ := json.Marshal(map[string]string{"error": upstream.ScrubDescription(refused.ErrorCode)})

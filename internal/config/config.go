@@ -43,14 +43,21 @@ var DefaultURL = "https://chalet.do"
 
 // FromEnvironment is the connection a runtime with no keychain passes in
 // CHALET_CLIENT_ID and CHALET_CLIENT_SECRET, instead of `chalet auth login
-// --agent`. When both are set it takes the place of every profile: Chalet at
-// DefaultURL, in the account the agent is in, which its identity gives.
-func FromEnvironment() (*Profile, Credentials, bool) {
+// --agent`: Chalet at DefaultURL, in the account the agent is in, which its
+// identity gives. A profile named by the flag or CHALET_PROFILE wins over it.
+// One variable without the other is an error, never a quiet turn to a saved
+// profile, which may be a person's.
+func FromEnvironment(flag string) (*Profile, Credentials, bool, error) {
 	id, secret := os.Getenv("CHALET_CLIENT_ID"), os.Getenv("CHALET_CLIENT_SECRET")
-	if id == "" || secret == "" {
-		return nil, Credentials{}, false
+	switch {
+	case flag != "" || os.Getenv("CHALET_PROFILE") != "" || (id == "" && secret == ""):
+		return nil, Credentials{}, false, nil
+	case id == "":
+		return nil, Credentials{}, false, errors.New("CHALET_CLIENT_SECRET is set without CHALET_CLIENT_ID: set both, or neither")
+	case secret == "":
+		return nil, Credentials{}, false, errors.New("CHALET_CLIENT_ID is set without CHALET_CLIENT_SECRET: set both, or neither")
 	}
-	return &Profile{Name: "environment", BaseURL: DefaultURL}, Credentials{ClientID: id, ClientSecret: secret}, true
+	return &Profile{Name: "environment", BaseURL: DefaultURL}, Credentials{ClientID: id, ClientSecret: secret}, true, nil
 }
 
 // Dir is ~/.config/chalet, or $XDG_CONFIG_HOME/chalet.
@@ -119,11 +126,11 @@ func Save(p *Profile, creds Credentials) error {
 func (p *Profile) Credentials() (Credentials, error) {
 	data, err := keychain().Load(p.credentialKey())
 	if err != nil {
-		return Credentials{}, fmt.Errorf("no token for profile %q: run `chalet auth login --profile %s` (%w)", p.Name, p.Name, err)
+		return Credentials{}, fmt.Errorf("nothing to sign in with for profile %q: run `chalet auth login --profile %s`, with --agent for an agent (%w)", p.Name, p.Name, err)
 	}
 	var stored Credentials
 	if err := json.Unmarshal(data, &stored); err != nil {
-		return Credentials{}, fmt.Errorf("unreadable token for profile %q: run `chalet auth login --profile %s`", p.Name, p.Name)
+		return Credentials{}, fmt.Errorf("unreadable sign-in for profile %q: run `chalet auth login --profile %s`, with --agent for an agent", p.Name, p.Name)
 	}
 	return stored, nil
 }

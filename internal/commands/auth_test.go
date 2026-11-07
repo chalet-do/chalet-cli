@@ -84,9 +84,22 @@ func TestAnAgentSignsIn(t *testing.T) {
 		t.Fatalf("from the environment: %+v, %v", p, err)
 	}
 
+	// A profile named wins over the environment; one variable alone is refused,
+	// never a quiet turn to a saved profile.
+	defer func(name string) { profileFlag = name }(profileFlag)
+	profileFlag = "default"
+	if p, _, err := client(context.Background()); err != nil || p.Name != "default" {
+		t.Fatalf("a named profile: %+v, %v", p, err)
+	}
+	profileFlag = ""
+	t.Setenv("CHALET_CLIENT_SECRET", "")
+	if _, _, err := client(context.Background()); err == nil || !strings.Contains(err.Error(), "without CHALET_CLIENT_SECRET") {
+		t.Fatalf("one variable alone: %v", err)
+	}
+	t.Setenv("CHALET_CLIENT_ID", "")
+
 	// Disconnected, the secret buys nothing, and it is never shown.
 	secret = "chalet_cs_new"
-	t.Setenv("CHALET_CLIENT_ID", "")
 	out, err = run(t, statusCommand(), "")
 	if err == nil || !strings.Contains(err.Error(), "401 invalid_client") || strings.Contains(out+err.Error(), "chalet_cs_") {
 		t.Fatalf("disconnected: %q, %v", out, err)

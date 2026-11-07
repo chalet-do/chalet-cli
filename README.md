@@ -103,7 +103,8 @@ chalet keeps both in the keychain, trades them with Chalet for a token of an
 hour, and trades them again before the hour ends. A runtime with no keychain,
 such as a cloud environment, sets `CHALET_CLIENT_ID` and
 `CHALET_CLIENT_SECRET` instead of signing in. chalet then reaches
-https://chalet.do as the agent, whatever profiles there are.
+https://chalet.do as the agent, unless `--profile` or `CHALET_PROFILE` names
+a profile.
 
 **Disconnect** on the agent's page ends the secret and every token it bought.
 

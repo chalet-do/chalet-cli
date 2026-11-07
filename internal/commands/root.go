@@ -52,9 +52,11 @@ func Execute() int {
 // use, not only at login: an edited profile must not carry the token in the
 // clear.
 func client(ctx context.Context) (*config.Profile, *chalet.Client, error) {
-	p, creds, fromEnvironment := config.FromEnvironment()
+	p, creds, fromEnvironment, err := config.FromEnvironment(profileFlag)
+	if err != nil {
+		return nil, nil, err
+	}
 	if !fromEnvironment {
-		var err error
 		if p, err = config.Resolve(profileFlag); err != nil {
 			return nil, nil, err
 		}

@@ -80,7 +80,8 @@ func TestATokenFromItsSource(t *testing.T) {
 		t.Fatalf("sent %v, got %v, %v", sent, resp, err)
 	}
 
-	for given, want := range map[int]int{http.StatusBadRequest: http.StatusUnauthorized, http.StatusTooManyRequests: http.StatusTooManyRequests, http.StatusServiceUnavailable: http.StatusServiceUnavailable} {
+	for given, want := range map[int]int{http.StatusBadRequest: http.StatusUnauthorized, http.StatusOK: http.StatusUnauthorized, http.StatusFound: http.StatusUnauthorized,
+		http.StatusTooManyRequests: http.StatusTooManyRequests, http.StatusServiceUnavailable: http.StatusServiceUnavailable} {
 		client.Tokens = source{err: &oauth2.RetrieveError{Response: &http.Response{StatusCode: given}, Body: []byte("chalet_cs_secret"), ErrorCode: "invalid_client"}}
 		resp, err := client.Do(context.Background(), "GET", "/my", nil, nil, nil)
 		if err != nil || resp.Status != want || resp.Error() != fmt.Sprintf("%d invalid_client", want) {

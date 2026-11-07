@@ -154,37 +154,36 @@ func warnAboutKeychain(cmd *cobra.Command) {
 func readCredentials(in io.Reader, prompt io.Writer, agent bool) (config.Credentials, error) {
 	read := lines(in, prompt)
 	if !agent {
-		token, err := read("Paste your Chalet token: ", true)
+		token, err := read("Paste your Chalet token: ")
 		if err == nil && !strings.HasPrefix(token, "chalet_pat_") {
 			err = errors.New("that is not a Chalet token: they start with chalet_pat_")
 		}
 		return config.Credentials{Token: token}, err
 	}
 
-	id, err := read("Client ID: ", false)
+	id, err := read("Client ID: ")
 	if err != nil {
 		return config.Credentials{}, err
 	}
-	secret, err := read("Client secret: ", true)
+	secret, err := read("Client secret: ")
 	if err == nil && (id == "" || !strings.HasPrefix(secret, "chalet_cs_")) {
 		err = errors.New("give the connection's client ID, then its secret, which starts with chalet_cs_")
 	}
 	return config.Credentials{ClientID: id, ClientSecret: secret}, err
 }
 
-// lines reads one line at a time: from a terminal after its prompt, a secret
-// typed blind; from a pipe, the next line. Every line comes through the one
+// lines reads one line at a time: from a terminal after its prompt, typed
+// blind — the ID too, since a paste of the ID and the secret together would
+// show the secret; from a pipe, the next line, every one through the one
 // buffered reader, which may already hold the next.
-func lines(in io.Reader, prompt io.Writer) func(label string, blind bool) (string, error) {
+func lines(in io.Reader, prompt io.Writer) func(label string) (string, error) {
 	buffered := bufio.NewReader(in)
 	file, _ := in.(*os.File)
 	terminal := file != nil && term.IsTerminal(int(file.Fd()))
 
-	return func(label string, blind bool) (string, error) {
+	return func(label string) (string, error) {
 		if terminal {
 			fmt.Fprint(prompt, label)
-		}
-		if terminal && blind {
 			data, err := term.ReadPassword(int(file.Fd()))
 			fmt.Fprintln(prompt)
 			return strings.TrimSpace(string(data)), err
