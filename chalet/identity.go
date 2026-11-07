@@ -9,20 +9,24 @@ import (
 
 // Identity is who a token belongs to and the accounts it reaches, as GET
 // /my/identity answers: every account a personal access token reaches, or
-// the one account a grant was given for.
+// the one account a grant or an agent's connection was given for.
 type Identity struct {
 	EmailAddress string    `json:"email_address"`
 	Accounts     []Account `json:"accounts"`
 }
 
-// Account is one account a token reaches.
+// Account is one account a token reaches. An agent's user names its sponsor,
+// the person it acts for; its address is a hidden one, never to be shown.
 type Account struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
 	URL  string `json:"url"`
 	User struct {
-		Name string `json:"name"`
-		Role string `json:"role"`
+		Name    string `json:"name"`
+		Role    string `json:"role"`
+		Sponsor struct {
+			Name string `json:"name"`
+		} `json:"sponsor"`
 	} `json:"user"`
 }
 

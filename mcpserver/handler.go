@@ -86,12 +86,12 @@ func (h handler) handOver(resp *chalet.Response) *mcp.CallToolResult {
 		return failed(resp, nil, true)
 	}
 
-	where := "Give the owner the confirm page"
+	where := "Give the person you act for the confirm page"
 	if h.open != nil { // a server has no browser to open
 		if err := h.open(ask.ConfirmURL); err != nil {
 			h.logger.Warn("could not open the browser", "error", err)
 		} else {
-			where = "The confirm page is open in the owner's browser"
+			where = "The confirm page is open in the browser of the person you act for"
 		}
 	}
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf(
@@ -276,9 +276,9 @@ func refusal(resp *chalet.Response) (code string, retryable bool, hint string) {
 	case http.StatusUnauthorized:
 		return "unauthorized", false, ""
 	case http.StatusForbidden:
-		return "forbidden", false, "The owner may not do this, or it is not open to agents."
+		return "forbidden", false, "You may not do this, or it is not open to agents."
 	case http.StatusNotFound:
-		return "not_found", false, "The id is wrong, the thing is gone, or the owner cannot reach it."
+		return "not_found", false, "The id is wrong, the thing is gone, or you cannot reach it."
 	case http.StatusUnprocessableEntity:
 		return "invalid", false, string(resp.Body)
 	case http.StatusTooManyRequests:

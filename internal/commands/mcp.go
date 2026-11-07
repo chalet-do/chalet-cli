@@ -17,8 +17,12 @@ import (
 // A seam so tests can drive the server over memory instead of stdin/stdout.
 var mcpTransport = func() mcp.Transport { return &mcp.StdioTransport{} }
 
-// How the owner signs in again here, for the hint of an unauthorized answer.
-const signIn = "The token is wrong, revoked, or may only read. The owner can make a new one in Chalet's settings and run `chalet auth login`."
+// How the person you act for signs in again here, for the hint of an
+// unauthorized answer: with a new token, or an agent with a new connection.
+const (
+	signIn      = "The token is wrong, revoked, or may only read. The person you act for can make a new one in Chalet's settings and run `chalet auth login`."
+	agentSignIn = "The connection is disconnected, or the agent is removed. The person you act for can connect the agent again on its page in Chalet's settings, and run `chalet auth login --agent`."
+)
 
 func mcpCommand() *cobra.Command {
 	var cfg mcpserver.Config
@@ -37,14 +41,16 @@ func mcpCommand() *cobra.Command {
 			"agent_notes": "Long-running server; stdout speaks the MCP wire protocol. Not for interactive use.",
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg.Writes, cfg.SignIn = !readOnly, signIn
-
 			// Logs go to stderr: stdout belongs to the MCP wire.
 			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil))
 
-			_, client, err := client()
+			_, client, err := client(cmd.Context())
 			if err != nil {
 				return err
+			}
+			cfg.Writes, cfg.SignIn = !readOnly, signIn
+			if isAgent(client) {
+				cfg.SignIn = agentSignIn
 			}
 
 			catalog, err := mcpserver.LoadCatalog(cmd.Context(), client)
