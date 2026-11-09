@@ -92,7 +92,7 @@ it reaches, and Claude asks when a request does not say.
 ## Sign in as an agent
 
 An agent is a member of a Chalet account in its own name, and acts for the
-person who added it. On the agent's page in **Settings › AI connections**,
+person who added it. On the agent's page in **Settings › AI agents**,
 **Connect** shows a client ID and a secret, once. Sign in with both, the ID
 first:
 

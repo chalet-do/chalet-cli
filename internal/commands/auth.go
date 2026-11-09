@@ -33,7 +33,7 @@ func loginCommand() *cobra.Command {
 			"standard input, never from an argument, and kept in your system's keychain.\n\n" +
 			"  chalet auth login\n\n" +
 			"With --agent, sign in as an agent with a connection from its page in\n" +
-			"Settings › AI connections: the client ID, then the secret, each on its own\n" +
+			"Settings › AI agents: the client ID, then the secret, each on its own\n" +
 			"line. chalet trades them for a token of an hour, and for the next before\n" +
 			"the hour ends. A runtime with no keychain sets CHALET_CLIENT_ID and\n" +
 			"CHALET_CLIENT_SECRET instead, and signs in to " + config.DefaultURL + ".\n\n" +
@@ -123,7 +123,7 @@ func logoutCommand() *cobra.Command {
 				return err
 			}
 			if creds.ClientID != "" {
-				fmt.Fprintf(cmd.OutOrStdout(), "Forgot the connection for profile %s. Disconnect it in Chalet too, on the agent's page in Settings › AI connections.\n", p.Name)
+				fmt.Fprintf(cmd.OutOrStdout(), "Forgot the connection for profile %s. Disconnect it in Chalet too, on the agent's page in Settings › AI agents.\n", p.Name)
 			} else {
 				fmt.Fprintf(cmd.OutOrStdout(), "Forgot the token for profile %s. Revoke it in Chalet too: Settings › Access tokens.\n", p.Name)
 			}
