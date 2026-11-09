@@ -92,9 +92,9 @@ it reaches, and Claude asks when a request does not say.
 ## Sign in as an agent
 
 An agent is a member of a Chalet account in its own name, and acts for the
-person who added it. On the agent's page in **Settings › AI connections**,
-**Connect** shows a client ID and a secret, once. Sign in with both, the ID
-first:
+person who added it. On the agent's page in **Settings › AI agents**, under
+**Using something other than Claude?**, **Connect** shows a client ID and a
+secret, once. Sign in with both, the ID first:
 
     chalet auth login --agent --profile claude
     claude mcp add --scope user chalet-claude -- chalet mcp --profile claude

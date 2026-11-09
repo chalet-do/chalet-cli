@@ -83,7 +83,7 @@ func diagnose(ctx context.Context) []check {
 	environment := fromEnvironment || envErr != nil
 
 	if p, client, err := client(ctx); err != nil && environment {
-		add("profile", "problem", err.Error(), "Set both CHALET_CLIENT_ID and CHALET_CLIENT_SECRET, from a connection on the agent's page in Chalet's Settings › AI connections.")
+		add("profile", "problem", err.Error(), "Set both CHALET_CLIENT_ID and CHALET_CLIENT_SECRET, from a connection on the agent's page in Chalet's Settings › AI agents.")
 	} else if err != nil {
 		add("profile", "problem", err.Error(), "Run `chalet auth login`.")
 	} else {
@@ -91,7 +91,7 @@ func diagnose(ctx context.Context) []check {
 
 		switch who, err := client.Identity(ctx); {
 		case err != nil && isAgent(client):
-			add("token", "problem", err.Error(), "Connect the agent again on its page in Chalet's Settings › AI connections, and run `chalet auth login --agent`.")
+			add("token", "problem", err.Error(), "Connect the agent again on its page in Chalet's Settings › AI agents, and run `chalet auth login --agent`.")
 		case err != nil:
 			add("token", "problem", err.Error(), "Make a new token in Chalet's Settings › Access tokens, and run `chalet auth login`.")
 		default:
