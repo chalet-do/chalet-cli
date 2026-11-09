@@ -71,7 +71,7 @@ func New(cat *Catalog, api API, open Opener, cfg Config, version string, logger 
 	if cfg.Account.Name != "" {
 		named := *narrowed
 		opening, rest, _ := strings.Cut(named.Rules, "\n\n")
-		account := "This server reaches one Chalet account: " + cfg.Account.Name + " (" + cfg.Account.URL + "). If the owner connected other Chalet accounts as other servers, use the one the request is about, and ask when it is unclear."
+		account := "This server reaches one Chalet account: " + cfg.Account.Name + " (" + cfg.Account.URL + "). If the person you act for connected other Chalet accounts as other servers, use the one the request is about, and ask when it is unclear."
 		named.Rules = strings.TrimSpace(opening + "\n\n" + account + "\n\n" + rest)
 		narrowed = &named
 	}

@@ -56,7 +56,7 @@ func (h handler) picture(ctx context.Context, _ *mcp.CallToolRequest, in picture
 		}
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.ImageContent{Data: resp.Body, MIMEType: kind}}}, nil, nil
 	case "text/html; charset=utf-8":
-		return failed(nil, errors.New("Chalet answered with a page, not a file: the link is not one from its answers, or the owner cannot see the file."), false), nil, nil
+		return failed(nil, errors.New("Chalet answered with a page, not a file: the link is not one from its answers, or you cannot see the file."), false), nil, nil
 	default:
 		return failed(nil, fmt.Errorf("Not a picture (%s, %d KB): only pictures can be shown.", kind, len(resp.Body)>>10), false), nil, nil
 	}

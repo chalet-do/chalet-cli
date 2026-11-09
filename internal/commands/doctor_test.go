@@ -49,7 +49,7 @@ func TestDoctor(t *testing.T) {
 	defer func(v string) { Version = v }(Version)
 	Version = "1.2.3"
 
-	if err := config.Save(&config.Profile{Name: "default", BaseURL: app.URL, Account: "1"}, "chalet_pat_test"); err != nil {
+	if err := config.Save(&config.Profile{Name: "default", BaseURL: app.URL, Account: "1"}, config.Credentials{Token: "chalet_pat_test"}); err != nil {
 		t.Fatal(err)
 	}
 

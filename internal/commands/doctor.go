@@ -77,15 +77,25 @@ func diagnose(ctx context.Context) []check {
 		checks = append(checks, check{Name: name, Status: status, Detail: detail, Fix: fix})
 	}
 
-	if p, client, err := client(); err != nil {
+	// Signing in from CHALET_CLIENT_ID and CHALET_CLIENT_SECRET keeps nothing,
+	// and its fix is the variables, never a login.
+	_, _, fromEnvironment, envErr := config.FromEnvironment(profileFlag)
+	environment := fromEnvironment || envErr != nil
+
+	if p, client, err := client(ctx); err != nil && environment {
+		add("profile", "problem", err.Error(), "Set both CHALET_CLIENT_ID and CHALET_CLIENT_SECRET, from a connection on the agent's page in Chalet's Settings › AI connections.")
+	} else if err != nil {
 		add("profile", "problem", err.Error(), "Run `chalet auth login`.")
 	} else {
 		add("profile", "ok", fmt.Sprintf("%s: %s, account %s", p.Name, p.BaseURL, p.Account), "")
 
-		if who, err := client.Identity(ctx); err != nil {
+		switch who, err := client.Identity(ctx); {
+		case err != nil && isAgent(client):
+			add("token", "problem", err.Error(), "Connect the agent again on its page in Chalet's Settings › AI connections, and run `chalet auth login --agent`.")
+		case err != nil:
 			add("token", "problem", err.Error(), "Make a new token in Chalet's Settings › Access tokens, and run `chalet auth login`.")
-		} else {
-			add("token", "ok", "signed in as "+who.EmailAddress, "")
+		default:
+			add("token", "ok", "signed in as "+signedInAs(who), "")
 		}
 
 		if catalog, err := mcpserver.LoadCatalog(ctx, client); err != nil {
@@ -96,6 +106,8 @@ func diagnose(ctx context.Context) []check {
 	}
 
 	switch warning := config.KeychainWarning(); {
+	case environment:
+		add("keychain", "ok", "nothing is kept: the connection comes from CHALET_CLIENT_ID and CHALET_CLIENT_SECRET", "")
 	case config.UsingKeychain():
 		add("keychain", "ok", "the token is kept in the system keychain", "")
 	case warning != "":
