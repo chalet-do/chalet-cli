@@ -137,7 +137,14 @@ func buildRequest(op *catalog.Operation, params map[string]any) (string, url.Val
 		case "path":
 			path = strings.ReplaceAll(path, "{"+param.Name+"}", url.PathEscape(scalar(value)))
 		case "query":
-			query.Set(param.Name, scalar(value))
+			// A list goes as Rails reads one: a name[] for each item.
+			if list, ok := value.([]any); ok {
+				for _, item := range list {
+					query.Add(param.Name+"[]", scalar(item))
+				}
+			} else {
+				query.Set(param.Name, scalar(value))
+			}
 		}
 	}
 
