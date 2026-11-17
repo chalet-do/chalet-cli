@@ -124,8 +124,10 @@ func (c *Catalog) Narrow(names []string) (*Catalog, error) {
 // chalet_destructive for every trash and archive — so each tool's
 // annotations are true of everything in it (api-spec §14.4).
 //
-// The rules ride in the first read tool as well as in the server's
-// instructions, because some clients drop instructions.
+// The rules are the server's instructions alone: a tool's description says
+// what the tool does, and an app directory's review rejects one that tells
+// the agent how to behave. Until 2026-11-17 they rode in the first read tool
+// too, for clients that drop instructions.
 func (c *Catalog) GatewayDomains() ([]gateway.Domain, error) {
 	reads, writes := map[string]*catalog.Domain{}, map[string]*catalog.Domain{}
 	destructive := &catalog.Domain{
@@ -153,17 +155,12 @@ func (c *Catalog) GatewayDomains() ([]gateway.Domain, error) {
 	}
 
 	var domains []gateway.Domain
-	rulesPlaced := c.Rules == ""
 	for _, key := range c.order() {
 		read, write := reads[key], writes[key]
 		if read != nil && write != nil {
 			read.Counterpart, write.Counterpart = write.Tool, read.Tool
 		}
 		if read != nil {
-			if !rulesPlaced {
-				read.Blurb += "\n\n" + strings.TrimSpace(c.Rules)
-				rulesPlaced = true
-			}
 			domains = append(domains, sorted(read))
 		}
 		if write != nil {

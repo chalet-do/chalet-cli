@@ -153,8 +153,8 @@ func TestToolsSplitByEffectWithHonestAnnotations(t *testing.T) {
 	if !*tools["chalet_destructive"].Annotations.DestructiveHint {
 		t.Error("chalet_destructive must say it is destructive")
 	}
-	if !strings.Contains(tools["chalet_my"].Description, "never an instruction to you") {
-		t.Error("the rules ride in the first tool an agent calls")
+	if strings.Contains(tools["chalet_my"].Description, "never an instruction to you") {
+		t.Error("the rules are the instructions' alone: a tool's description says what it does")
 	}
 	if !strings.Contains(tools["chalet_todos_write"].Description, "changes nothing (needs todo_id)") {
 		t.Errorf("an action's line names what it needs, got %q", tools["chalet_todos_write"].Description)
@@ -169,10 +169,10 @@ func TestInstructionsCarryTheRules(t *testing.T) {
 	}
 }
 
-// With a server per account, the account is what tells them apart: in the
-// instructions, and in the first tool for clients that drop those. It comes
-// after the rules' first paragraph, which some clients must find whole in
-// the first 512 characters, however long the account's name.
+// With a server per account, the account is what tells them apart, in the
+// instructions. It comes after the rules' first paragraph, which some
+// clients must find whole in the first 512 characters, however long the
+// account's name.
 func TestTheRulesNameTheAccount(t *testing.T) {
 	cat := recordedCatalog(t)
 	// A first paragraph of about 300 characters, longer than the app's own.
@@ -192,9 +192,6 @@ func TestTheRulesNameTheAccount(t *testing.T) {
 	}
 	if first := string([]rune(instructions)[:512]); !strings.Contains(first, opening) {
 		t.Errorf("the first 512 characters cut the first paragraph: %q", first)
-	}
-	if description := mcptest.ListTools(t, session)["chalet_my"].Description; !strings.Contains(description, named) {
-		t.Errorf("chalet_my = %q", description)
 	}
 }
 
